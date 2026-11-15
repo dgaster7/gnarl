@@ -63,7 +63,7 @@ static std::vector<float> renderBlocks(juce::AudioPluginInstance& p, bool fx, in
             }
         }
         p.processBlock(buf, midi);
-        for (int i = 0; i < block; ++i) out.push_back(buf.getSample(0, i) + 0.5f * buf.getSample(outs > 1 ? 1 : 0, i));
+        for (int i = 0; i < block; ++i) out.push_back(buf.getSample(0, i) + 0.5f * buf.getSample(outs > 1 ? 1 : 0, i)); // L + R/2: a fingerprint, not a level
     }
     return out;
 }
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
     if (cmd == "render" && argc >= 4) {
         auto out = renderBlocks(*plugin, fx, 200, block, true);
         double pk = 0; for (float v : out) pk = std::max(pk, (double) std::fabs(v));
-        std::printf("rendered %zu samples, peak %.3f\n", out.size(), pk);
+        std::printf("rendered %zu samples, audible: %s\n", out.size(), pk > 1e-4 ? "yes" : "NO");
         return pk > 1e-4 ? 0 : 1;
     }
     // map host parameters by name (JUCE exposes the plugin's parameter names unchanged)
@@ -113,7 +113,11 @@ int main(int argc, char** argv) {
     auto& R = Registry::get();
 
     if (cmd == "recall" && argc >= 5) {
-        juce::MemoryBlock mb; juce::File(argv[3]).loadFileAsData(mb);
+        juce::MemoryBlock raw; juce::File(argv[3]).loadFileAsData(raw);
+        // fixtures hold the plugin's own state; wrap it the way the VST3 host hands state to the plugin
+        juce::XmlElement x("VST3PluginState");
+        x.createNewChildElement("IComponent")->addTextElement(raw.toBase64Encoding());
+        juce::MemoryBlock mb; juce::AudioProcessor::copyXmlToBinary(x, mb);
         plugin->setStateInformation(mb.getData(), (int) mb.getSize());
         auto v = juce::JSON::parse(juce::File(argv[4]));
         int bad = 0, checked = 0;
