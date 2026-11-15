@@ -116,7 +116,7 @@ public:
         for (int b = 0; b < 3; ++b) { std::string p = "fx_mbd_b" + std::to_string(b + 1) + "_"; bi[b] = {ix(p + "type"), ix(p + "drive"), ix(p + "mix"), ix(p + "dyn"), ix(p + "fb")}; }
     }
     void prepare(float s, int mb, int l2) override { FxModule::prepare(s, mb, l2); ob.prepare(mb); reset(); }
-    void reset() override { ob.reset(); for (auto& c : ch) { c = Chan(); } }
+    void reset() override { ob.reset(); for (auto& c : ch) { c = Chan(); for (auto& d : c.ds) d.dc.setRate(sr * 8); } }
     int latency() const override { return ob.os.latency(); }
     void processWet(float* L, float* R, int n, const FxParams& p, FxContext& ctx) override {
         ob.setL2(ctx.osLog2);
@@ -182,7 +182,9 @@ public:
                         y *= gn;
                     }
                     if (d > 0) {
-                        float s = distortSample(choiceOf(p, bi[b].type), y, d, 0, C.ds[b], rate, ctx.draw, 0);
+                        const int ty = choiceOf(p, bi[b].type);
+                        float s = distortSample(ty, y, d, 0, C.ds[b], rate, ctx.draw, 0);
+                        if (distNeedsDcBlock(ty, 0)) s = C.ds[b].dc.process(s);
                         y = y + (s - y) * driveBlend(d);
                     }
                     C.prev[b] = y;
@@ -286,13 +288,13 @@ public:
             // width of the wet signal, then mono below the crossover (wet side high-passed)
             const float w = lerpP(p, width, i, n);
             float m = 0.5f * (wl + wr), s = 0.5f * (wl - wr) * w;
-            s = hp[0].process(s, Svf::gOf(lerpP(p, mono, i, n), sr));
+            { const float g = Svf::gOf(1.6f * lerpP(p, mono, i, n), sr); s = hp[1].process(hp[0].process(s, g), g); }
             L[i] = m + s; R[i] = m - s;
             (void) x;
         }
     }
 private:
-    FracDelay dl[2]; Hp4 hp[1]; double ph = 0;
+    FracDelay dl[2]; Hp4 hp[2]; double ph = 0;
 };
 
 // ------------------------------- Comb -------------------------------
@@ -506,7 +508,7 @@ class CompFx : public FxModule {
 public:
     int thresh, ratio, attack, release, makeup, clip;
     CompFx() { thresh = ix("fx_comp_thresh"); ratio = ix("fx_comp_ratio"); attack = ix("fx_comp_attack"); release = ix("fx_comp_release"); makeup = ix("fx_comp_makeup"); clip = ix("fx_comp_clip"); }
-    void reset() override { env = 0; }
+    void reset() override { env = 0; clipDc[0].reset(); clipDc[1].reset(); }
     void processWet(float* L, float* R, int n, const FxParams& p, FxContext&) override {
         float r1 = p.e1[ratio];
         if (audit::isRemoved(ratio)) r1 = 1;
@@ -530,12 +532,13 @@ public:
             }
             if (doMake) g *= dbToGain(lerpP(p, makeup, i, n));
             float l = L[i] * g, r = R[i] * g;
-            if (doClip) { l = fastTanh(l); r = fastTanh(r); }
+            if (doClip) { l = clipDc[0].process(fastTanh(l)); r = clipDc[1].process(fastTanh(r)); }
             L[i] = l; R[i] = r;
         }
     }
+    void prepare(float s, int mb, int l2) override { FxModule::prepare(s, mb, l2); clipDc[0].setRate(s); clipDc[1].setRate(s); reset(); }
 private:
-    float env = 0;
+    float env = 0; DcBlocker clipDc[2];
 };
 
 // ------------------------------- Delay -------------------------------
@@ -844,8 +847,8 @@ public:
                      ix(p + "dist_on"), ix(p + "dist_type"), ix(p + "dist_drive"), ix(p + "comb_on"), ix(p + "comb_freq"), ix(p + "comb_fb"), ix(p + "crush_on"), ix(p + "crush_bits")};
         }
     }
-    void prepare(float s, int mb, int l2) override { FxModule::prepare(s, mb, l2); for (auto& c : ch) for (auto& b : c.band) b.comb.prepare((int) (s / 18.f)); reset(); }
-    void reset() override { for (auto& c : ch) { c.a.reset(); c.b.reset(); for (auto& b : c.band) { b.flt.reset(); std::fill(std::begin(b.ph), std::end(b.ph), 0.f); b.phFb = 0; b.ds.reset(); b.comb.reset(); } } for (auto& p : phPh) p = 0; }
+    void prepare(float s, int mb, int l2) override { FxModule::prepare(s, mb, l2); for (auto& c : ch) for (auto& b : c.band) { b.comb.prepare((int) (s / 18.f)); b.ds.dc.setRate(s); } reset(); }
+    void reset() override { for (auto& c : ch) { c.a.reset(); c.b.reset(); for (auto& b : c.band) { b.flt.reset(); std::fill(std::begin(b.ph), std::end(b.ph), 0.f); b.phFb = 0; b.ds.reset(); b.ds.dc.setRate(sr); b.comb.reset(); } } for (auto& p : phPh) p = 0; }
     double tailSeconds() const override { return 1.0; }
     void processWet(float* L, float* R, int n, const FxParams& p, FxContext& ctx) override {
         bool any = false;
@@ -879,7 +882,7 @@ public:
                                 for (int k = 0; k < 4; ++k) { float w = (v - S.ph[k]) * G; float l = w + S.ph[k]; S.ph[k] = l + w; v = 2 * l - v; }
                                 S.phFb = v; y = 0.5f * (y + v);
                             } break;
-                            case 2: if (on(p, B.distOn)) { float d = audit::isRemoved(B.distDrive) ? 0.f : lerpP(p, B.distDrive, i, n); if (d > 0) { float s = distortSample(choiceOf(p, B.distType), y, d, 0, S.ds, sr, ctx.draw, 0); y = y + (s - y) * driveBlend(d); } } break;
+                            case 2: if (on(p, B.distOn)) { float d = audit::isRemoved(B.distDrive) ? 0.f : lerpP(p, B.distDrive, i, n); if (d > 0) { const int ty = choiceOf(p, B.distType); float s = distortSample(ty, y, d, 0, S.ds, sr, ctx.draw, 0); if (distNeedsDcBlock(ty, 0)) s = S.ds.dc.process(s); y = y + (s - y) * driveBlend(d); } } break;
                             case 3: if (on(p, B.combOn)) { float target = clampf(sr / lerpP(p, B.combFreq, i, n), 2.f, (float) S.comb.mask - 4); if (S.combD <= 0) S.combD = target; S.combD += clampf(target - S.combD, -0.5f, 0.5f); float dly = S.combD; float o = y + lerpP(p, B.combFb, i, n) * S.comb.read(dly); S.comb.push(o); y = o * (1.f - 0.5f * std::fabs(lerpP(p, B.combFb, i, n))); } break;
                             case 4: if (on(p, B.crushOn)) { float lv = std::exp2(lerpP(p, B.crushBits, i, n) - 1.f); y = std::round(clampf(y, -1, 1) * lv) / lv; } break;
                             default: break;
@@ -938,7 +941,7 @@ class WidthFx : public FxModule {
 public:
     int amount, monoOn, monoHz;
     WidthFx() { amount = ix("fx_width_amount"); monoOn = ix("fx_width_mono_on"); monoHz = ix("fx_width_mono_hz"); }
-    void reset() override { hp.reset(); }
+    void reset() override { hp.reset(); hp2.reset(); }
     void processWet(float* L, float* R, int n, const FxParams& p, FxContext&) override {
         const bool mono = on(p, monoOn) && !audit::isRemoved(monoOn);
         const bool w = (p.e0[amount] != 1 || p.e1[amount] != 1) && !audit::isRemoved(amount);
@@ -946,12 +949,12 @@ public:
         for (int i = 0; i < n; ++i) {
             float m = 0.5f * (L[i] + R[i]), s = 0.5f * (L[i] - R[i]);
             if (w) s *= lerpP(p, amount, i, n);
-            if (mono) s = hp.process(s, Svf::gOf(lerpP(p, monoHz, i, n), sr)); // side high-passed: truly mono below the crossover
+            if (mono) { const float g = Svf::gOf(1.6f * lerpP(p, monoHz, i, n), sr); s = hp2.process(hp.process(s, g), g); } // 8th-order side high-pass at 1.6x: mono below the set frequency
             L[i] = m + s; R[i] = m - s;
         }
     }
 private:
-    Hp4 hp;
+    Hp4 hp, hp2;
 };
 
 } // namespace

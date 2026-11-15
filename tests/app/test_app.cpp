@@ -187,5 +187,37 @@ TEST_CASE("saved-state fixtures from every release load", "[fixtures]") {
         ++loaded;
     }
     INFO("fixtures loaded: " << loaded);
-    REQUIRE(loaded >= 0);
+    REQUIRE(loaded >= 6); // at least the 1.0.0 fixtures
+}
+
+// Hidden: writes this release's saved-state fixtures. Run once per release:
+//   GNARL_WRITE_FIXTURES=tests/fixtures/<version> gnarl_app_tests "[.make-fixtures]"
+TEST_CASE("write saved-state fixtures for this release", "[.make-fixtures]") {
+    auto* dir = std::getenv("GNARL_WRITE_FIXTURES");
+    REQUIRE(dir != nullptr);
+    juce::File out(juce::File::getCurrentWorkingDirectory().getChildFile(dir));
+    out.createDirectory();
+    auto& R = Registry::get();
+    for (bool fx : {false, true}) {
+        for (int seed = 0; seed < 3; ++seed) {
+            GnarlProcessor proc(fx);
+            std::mt19937 rng((unsigned) (seed * 977 + (fx ? 5 : 1)));
+            if (seed > 0)
+                for (int i : R.forPlugin(fx ? kFx : kSynth)) {
+                    if (R[i].id == "master_level") continue;
+                    if (std::uniform_real_distribution<float>(0, 1)(rng) < 0.4f) proc.paramByIndex(i)->setValueNotifyingHost(std::uniform_real_distribution<float>(0, 1)(rng));
+                }
+            if (seed == 2) {
+                proc.addRoute(MS_Lfo1, R.indexOf("f1_cutoff"), 0.4f);
+                proc.addRoute(MS_Macro3, R.indexOf("fx_dist1_drive"), 0.5f);
+                proc.editStructure("fixture", [](PatchStructure& s) { s.fxSlots[0] = 0; s.fxSlots[1] = 3; s.macroNames[2] = "Tear"; });
+            }
+            juce::MemoryBlock mb; proc.getStateInformation(mb);
+            auto base = out.getChildFile(juce::String(fx ? "fx" : "synth") + "-" + juce::String(seed));
+            base.withFileExtension(".state").replaceWithData(mb.getData(), mb.getSize());
+            juce::DynamicObject::Ptr exp = new juce::DynamicObject();
+            for (int i : R.forPlugin(fx ? kFx : kSynth)) { auto* p = proc.paramByIndex(i); exp->setProperty(juce::String(R[i].id), p->convertFrom0to1(p->getValue())); }
+            base.withFileExtension(".expect.json").replaceWithText(juce::JSON::toString(juce::var(exp.get())));
+        }
+    }
 }

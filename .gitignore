@@ -3,3 +3,4 @@ build*/
 *.swp
 /signing-key*
 .cache/
+content/Wavetables/

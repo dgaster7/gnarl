@@ -137,7 +137,7 @@ public:
     std::unique_ptr<FxChain> chainPtr;
     FinalStage finalStage;
     Oversampler postOs;
-    DistState postDist; DcBlocker postDc;
+    DistState postDist; DcBlocker postDc; DcBlocker outDc[2];
     std::vector<float> mixL, mixR, subMix, fxSendL, fxSendR, tmpL, tmpR, inGainL, inGainR;
     std::array<const WavetableData*, 3> tablePtr{};
     double ppqAtBlock = 0;
@@ -191,7 +191,7 @@ public:
         chainPtr->prepare(sr, kSub);
         finalStage.prepare(sr, kSub);
         postOs.prepare(1, kSub, kMaxOsLog2, Oversampler::Kind::Iir);
-        postDc.setRate(sr * kMaxOs); postDist.dc.setRate(sr * kMaxOs);
+        postDc.setRate(sr * kMaxOs); postDist.dc.setRate(sr * kMaxOs); outDc[0].setRate(sr); outDc[1].setRate(sr);
         for (auto* v : {&mixL, &mixR, &subMix, &fxSendL, &fxSendR, &tmpL, &tmpR, &inGainL, &inGainR}) v->assign((size_t) kSub * kMaxOs, 0.f);
         reset();
     }
@@ -203,7 +203,7 @@ public:
         for (auto& l : glfo) l.resetPhase(0);
         if (chainPtr) chainPtr->reset();
         finalStage.reset();
-        postOs.reset(); postDist.reset(); postDc.reset();
+        postOs.reset(); postDist.reset(); postDc.reset(); outDc[0].reset(); outDc[1].reset();
         follower = fast = slow = transient = 0;
         modWheel = bend = chanAT = 0;
     }
@@ -865,6 +865,9 @@ public:
             outL[i] = (mixL[(size_t) i] + subMix[(size_t) i]) * m;
             outR[i] = (mixR[(size_t) i] + subMix[(size_t) i]) * m;
         }
+        // Synth only: 5 Hz DC blocker on the output (FM half/abs-sine waves, grains and asymmetric curves make DC).
+        // GNARL FX has none, so neutral settings stay bit-transparent; its nonlinear modules block their own DC.
+        if (!fx) for (int i = 0; i < n; ++i) { outL[i] = outDc[0].process(outL[i]); outR[i] = outDc[1].process(outR[i]); }
         const bool cdRem = audit::isRemoved(G.clipDrive);
         finalStage.process(outL, outR, n, b(G.clipOn), ci(G.clipMode), gp(G.clipCeiling), g(G.clipCeiling), cdRem ? 0.f : gp(G.clipDrive), cdRem ? 0.f : g(G.clipDrive));
         if (!fx) followerUpdate(outL, outR, n);

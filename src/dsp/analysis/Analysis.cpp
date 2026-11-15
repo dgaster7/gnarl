@@ -40,11 +40,18 @@ double maxAbsDiff(const std::vector<float>& a, const std::vector<float>& b, int 
     return m;
 }
 double dc(const std::vector<float>& x, size_t from, size_t to) {
+    // Blackman-Harris weighted mean: a plain mean over a non-integer number of cycles leaks the
+    // waveform itself into the estimate (about -60 dB for a 65 Hz bass over 2 s); this does not.
     to = clampTo(x, to);
-    if (to <= from) return 0;
-    double s = 0;
-    for (size_t i = from; i < to; ++i) s += x[i];
-    return s / (double) (to - from);
+    if (to <= from + 1) return 0;
+    const double n = (double) (to - from - 1);
+    double s = 0, w = 0;
+    for (size_t i = from; i < to; ++i) {
+        double t = (double) (i - from) / n;
+        double wi = 0.35875 - 0.48829 * std::cos(2 * M_PI * t) + 0.14128 * std::cos(4 * M_PI * t) - 0.01168 * std::cos(6 * M_PI * t);
+        s += wi * x[i]; w += wi;
+    }
+    return s / w;
 }
 
 std::vector<double> spectrumDb(const std::vector<float>& x, double sr, int order, size_t from, size_t to) {

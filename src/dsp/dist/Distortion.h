@@ -64,10 +64,9 @@ inline float distortSample(int type, float x, float drive01, float bias, DistSta
     return y;
 }
 
-// Types that produce DC (asymmetric) and need the DC blocker.
-inline bool distNeedsDcBlock(int type, float bias) {
-    return bias != 0 || type == DT_Tube || type == DT_Valve || type == DT_Diode || type == DT_Rectify || type == DT_Fuzz || type == DT_Draw;
-}
+// Every active distortion stage DC-blocks its output: asymmetric curves make DC directly, and even a
+// symmetric curve makes DC from a signal whose amplitude distribution is not symmetric (e.g. a phased saw).
+inline bool distNeedsDcBlock(int, float) { return true; }
 
 // Crossfade so that drive 0 is exactly the identity and the effect fades in continuously.
 inline float driveBlend(float drive01) { return clampf(drive01 * 8.f, 0.f, 1.f); }
