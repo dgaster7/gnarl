@@ -26,8 +26,9 @@ const SrcInfo kSources[MS_Count] = {
 const char* kCurveNames[RC_Count] = {"Linear", "Slow", "Fast", "Linear Rev", "Slow Rev", "Fast Rev", "±1 semi", "±1 tone", "±1 oct", "±4 oct"};
 
 std::vector<ShapePoint> sinePoints() {
-    // Curved segments approximating a sine (quarter-wave segments with power curves).
-    return {{0, 0, 0}, {0.25f, 1, -0.45f}, {0.5f, 0, 0.45f}, {0.75f, -1, -0.45f}, {1, 0, 0.45f}};
+    std::vector<ShapePoint> v;
+    for (int i = 0; i <= 32; ++i) { float x = (float) i / 32.f; v.push_back({x, std::sin(6.28318530718f * x), 0}); }
+    return v;
 }
 } // namespace
 

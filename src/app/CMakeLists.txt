@@ -7,4 +7,4 @@ target_link_libraries(gnarl_app INTERFACE gnarl_dsp monocypher
   juce::juce_recommended_config_flags juce::juce_recommended_lto_flags juce::juce_recommended_warning_flags)
 target_compile_definitions(gnarl_app INTERFACE
   JUCE_WEB_BROWSER=0 JUCE_USE_CURL=0 JUCE_VST3_CAN_REPLACE_VST2=0 JUCE_DISPLAY_SPLASH_SCREEN=0
-  JUCE_STRICT_REFCOUNTEDPOINTER=1 JUCE_MODAL_LOOPS_PERMITTED=0)
+  JUCE_STRICT_REFCOUNTEDPOINTER=1)

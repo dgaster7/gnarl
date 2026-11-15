@@ -1,4 +1,5 @@
 #pragma once
+#include <atomic>
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -43,6 +44,11 @@ public:
                  const float* sideL = nullptr, const float* sideR = nullptr);
 
     int latencySamples() const;
+
+    // Lock-free UI feeds (written by the audio thread once per host block, read by the UI at 60 fps)
+    const std::atomic<float>* displayValues() const;   // modulated value of every parameter (newest voice for per-voice params)
+    const std::atomic<float>* sourceValues() const;    // current value of every modulation source (MS_Count)
+    float peakL() const; float peakR() const; int activeVoices() const;
     double tailSeconds() const;
     bool isFx() const;
     EngineImpl& impl() { return *d; }

@@ -143,6 +143,23 @@ public:
     double ppqAtBlock = 0;
     bool fxEnvGate = false;
     float normDelta[4096]; float stDelta[4096];
+    std::unique_ptr<std::atomic<float>[]> uiVals{new std::atomic<float>[4096]};
+    std::unique_ptr<std::atomic<float>[]> uiSrc{new std::atomic<float>[MS_Count]};
+    std::atomic<float> uiPeakL{0}, uiPeakR{0}; std::atomic<int> uiVoices{0};
+    void publishUi(const float* L, const float* R, int n) {
+        Voice* nv = fx ? &voices[0] : newestVoice();
+        for (int i = 0; i < NP; ++i) {
+            float v = (nv && st->voiceRouted[(size_t) i]) ? nv->vCur[(size_t) i] : effCur[(size_t) i];
+            uiVals[(size_t) i].store(v, std::memory_order_relaxed);
+        }
+        for (int s2 = 0; s2 < MS_Count; ++s2) uiSrc[(size_t) s2].store(nv ? nv->src[(size_t) s2] : gsrc[(size_t) s2], std::memory_order_relaxed);
+        float pl = 0, pr = 0;
+        for (int i = 0; i < n; ++i) { pl = std::max(pl, std::fabs(L[i])); pr = std::max(pr, std::fabs(R[i])); }
+        uiPeakL.store(std::max(pl, uiPeakL.load(std::memory_order_relaxed) * 0.9f), std::memory_order_relaxed);
+        uiPeakR.store(std::max(pr, uiPeakR.load(std::memory_order_relaxed) * 0.9f), std::memory_order_relaxed);
+        int c = 0; for (auto& v : voices) if (v.active && !v.stealing) ++c;
+        uiVoices.store(c, std::memory_order_relaxed);
+    }
 
     EngineImpl() {
         NP = R.size();
@@ -153,6 +170,8 @@ public:
         defaultStructure = ds;
         exchange.publish(ds);
         factoryTables(); // generate before any audio callback
+        for (int i = 0; i < 4096; ++i) uiVals[(size_t) i].store(i < NP ? R[i].def : 0.f);
+        for (int i = 0; i < MS_Count; ++i) uiSrc[(size_t) i].store(0);
     }
 
     const PatchStructure& S() const { return *st; }
@@ -775,6 +794,7 @@ public:
             pos += n;
         }
         while (evi < nev) handleMidi(ev[evi++]);
+        publishUi(outL, outR, total);
     }
 
     void subBlock(const float* inL, const float* inR, float* outL, float* outR, int n, const HostInfo& h, double ppq, const float* scL, const float* scR) {
@@ -949,5 +969,10 @@ double Engine::tailSeconds() const {
     return d->chainPtr ? d->chainPtr->tail(d->effCur.data(), s) : 0;
 }
 bool Engine::isFx() const { return d->fx; }
+const std::atomic<float>* Engine::displayValues() const { return d->uiVals.get(); }
+const std::atomic<float>* Engine::sourceValues() const { return d->uiSrc.get(); }
+float Engine::peakL() const { return d->uiPeakL.load(std::memory_order_relaxed); }
+float Engine::peakR() const { return d->uiPeakR.load(std::memory_order_relaxed); }
+int Engine::activeVoices() const { return d->uiVoices.load(std::memory_order_relaxed); }
 
 } // namespace gnarl
