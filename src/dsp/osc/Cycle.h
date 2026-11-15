@@ -14,7 +14,7 @@ enum ShaperStage { SH_DC, SH_Sym, SH_Warp, SH_Twist, SH_Drive, SH_Window, SH_Off
 
 struct CycleInputs {
     int source = 0;                 // 0 = virtual analog shape, 1 = wavetable frame
-    float vaShape = 2, vaPw = 0.5f;
+    float vaShape = 2, vaPw = 0.5f, syncRatio = 1; // syncRatio: hard sync done inside the cycle (exactly band-limited)
     const WavetableData* table = nullptr;
     float framePos = 0;             // 0..1
     bool interpFrames = true;

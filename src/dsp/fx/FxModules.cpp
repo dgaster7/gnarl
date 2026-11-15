@@ -91,12 +91,13 @@ public:
             ob.os.down(io, n);
         }
         // post tone (low-pass) and output gain — both neutral at their defaults
-        const bool toneOn = !(p.e0[tone] >= 19999.f && p.e1[tone] >= 19999.f) && !audit::isRemoved(tone);
+        const bool toneRem = audit::isRemoved(tone), outRem = audit::isRemoved(out);
+        const bool toneOn = !(p.e0[tone] >= 19999.f && p.e1[tone] >= 19999.f) && !toneRem;
         if (toneOn) {
             float g0 = Svf::gOf(p.e0[tone], sr), g1 = Svf::gOf(p.e1[tone], sr);
             for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) io[c][i] = tl[c].process(io[c][i], g0 + (g1 - g0) * (float) i / (float) n, 1.41421356f, 0);
         }
-        if ((p.e0[out] != 0 || p.e1[out] != 0) && !audit::isRemoved(out)) {
+        if ((p.e0[out] != 0 || p.e1[out] != 0) && !outRem) {
             float a = dbToGain(p.e0[out]), b = dbToGain(p.e1[out]);
             for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) io[c][i] *= a + (b - a) * (float) i / (float) n;
         }
@@ -143,6 +144,8 @@ public:
             lo = clampf(c / r2, 20, rate * 0.45f); hi = clampf(c * r2, lo * 1.01f, rate * 0.45f);
         };
         float lo0, hi0, lo1, hi1; xover(0, lo0, hi0); xover(1, lo1, hi1);
+        int isolate = -1; // full-wet test: only the band whose mix is under test is heard
+        for (int b = 0; b < 3; ++b) if (audit::zeroWet(bi[b].mix)) isolate = b;
         const float gl0 = Svf::gOf(lo0, rate), gl1 = Svf::gOf(lo1, rate), gh0 = Svf::gOf(hi0, rate), gh1 = Svf::gOf(hi1, rate);
         float envA = 0, envR = 0;
         { float a = 5.f, r = 80.f; envA = std::exp(-1.f / (a * 0.001f * rate)); envR = std::exp(-1.f / (r * 0.001f * rate)); }
@@ -165,6 +168,7 @@ public:
                     float m = p.e0[bi[b].mix] + (p.e1[bi[b].mix] - p.e0[bi[b].mix]) * t;
                     if (audit::isRemoved(bi[b].mix)) m = 0;
                     float clean = bands[b];
+                    if (isolate >= 0 && b != isolate) continue;
                     if (d <= 0 && dy == 0 && f <= 0) { sum += clean; continue; }
                     float in = audit::zeroWet(bi[b].mix) ? 0.f : clean;
                     if (f > 0) in += f * C.prev[b];
@@ -304,7 +308,10 @@ public:
         for (int c = 0; c < 2; ++c)
             for (int i = 0; i < n; ++i) {
                 float hz = on(p, key) ? ctx.lastNoteHz : lerpP(p, freq, i, n);
-                float d = clampf(sr / std::max(hz, 20.f), 2.f, (float) dl[c].mask - 4);
+                float target = clampf(sr / std::max(hz, 20.f), 2.f, (float) dl[c].mask - 4);
+                if (cur[c] <= 0) cur[c] = target;
+                cur[c] += clampf(target - cur[c], -0.5f, 0.5f); // slew-limited delay: pitch glides, never jumps
+                float d = cur[c];
                 float f = lerpP(p, fb, i, n), dm = lerpP(p, damp, i, n);
                 if (audit::isRemoved(damp)) dm = 0;
                 float y = dl[c].read(d);
@@ -315,7 +322,7 @@ public:
             }
     }
 private:
-    FracDelay dl[2]; float lp[2] = {};
+    FracDelay dl[2]; float lp[2] = {}; float cur[2] = {0, 0};
 };
 
 // ------------------------------- Vowel EQ -------------------------------
@@ -483,7 +490,8 @@ public:
                 for (int c = 0; c < 2; ++c) io[c][i] = band[c][0] + band[c][1] + band[c][2];
             }
         }
-        if ((p.e0[out] != 0 || p.e1[out] != 0) && !audit::isRemoved(out)) {
+        const bool outRem = audit::isRemoved(out);
+        if ((p.e0[out] != 0 || p.e1[out] != 0) && !outRem) {
             float a = dbToGain(p.e0[out]), b = dbToGain(p.e1[out]);
             for (int c = 0; c < 2; ++c) for (int i = 0; i < n; ++i) io[c][i] *= a + (b - a) * (float) i / (float) n;
         }
@@ -503,7 +511,8 @@ public:
         float r1 = p.e1[ratio];
         if (audit::isRemoved(ratio)) r1 = 1;
         const float ca = std::exp(-1.f / (p.e1[attack] * 0.001f * sr)), cr = std::exp(-1.f / (p.e1[release] * 0.001f * sr));
-        const bool doMake = (p.e0[makeup] != 0 || p.e1[makeup] != 0) && !audit::isRemoved(makeup);
+        const bool mkRem = audit::isRemoved(makeup);
+        const bool doMake = (p.e0[makeup] != 0 || p.e1[makeup] != 0) && !mkRem;
         const bool doClip = on(p, clip);
         for (int i = 0; i < n; ++i) {
             float g = 1;
@@ -543,10 +552,11 @@ public:
         target = clampf(target, 1.f, sr * 4.f);
         if (smoothT < 0) smoothT = target;
         const float sc = std::exp(-1.f / (0.05f * sr));
+        const float maxSlew = 0.5f; // delay may change by at most half a sample per sample (pitch shift within -1/+0.6 oct)
         const bool ping = on(p, pp);
         const float glp = Svf::gOf(p.e1[lp], sr), ghp = Svf::gOf(p.e1[hp], sr);
         for (int i = 0; i < n; ++i) {
-            smoothT = target + (smoothT - target) * sc;
+            { float nt = target + (smoothT - target) * sc; smoothT += clampf(nt - smoothT, -maxSlew, maxSlew); }
             const float f = audit::isRemoved(fb) ? 0.f : lerpP(p, fb, i, n);
             float yl = dl[0].read(smoothT), yr = dl[1].read(smoothT);
             float wl = fhp[0].process(flp[0].process(yl, glp, 1.41421356f, 0), ghp, 1.41421356f, 2);
@@ -651,29 +661,43 @@ public:
     void reset() override { for (auto& c : st) for (auto& r : c) r.y1 = r.y2 = 0; }
     double tailSeconds() const override { return lastDecay * 1.2; }
     void processWet(float* L, float* R, int n, const FxParams& p, FxContext& ctx) override {
-        const float f0 = on(p, key) ? ctx.lastNoteHz : p.e1[freq];
+        // Complex one-pole resonators (z <- r e^{jw} z + g x): their amplitude does not jump when
+        // they are retuned, so sweeping the root is smooth.
         const int banks = on(p, fifth) ? 2 : 1;
         lastDecay = p.e1[decay];
-        const float r = std::exp(-6.9078f / (std::max(p.e1[decay], 0.01f) * sr));
-        float coef[16], gain[16]; int cnt = 0;
-        for (int b = 0; b < banks; ++b)
-            for (int k = 1; k <= 8; ++k) {
-                float hz = f0 * (b ? 1.5f : 1.f) * (float) k;
-                if (hz > sr * 0.45f) break;
-                coef[cnt] = 2.f * r * std::cos(kTwoPi * hz / sr);
-                gain[cnt] = std::pow(0.15f + 0.85f * p.e1[bright], (float) (k - 1)) * (1.f - r) * 4.f;
-                ++cnt;
-            }
+        auto coefs = [&](const float* e, float* w, float* gain, float& rr) {
+            const float f0 = on(p, key) ? ctx.lastNoteHz : e[freq];
+            const float r = std::exp(-6.9078f / (std::max(e[decay], 0.01f) * sr));
+            rr = r;
+            int cnt = 0;
+            for (int b = 0; b < banks; ++b)
+                for (int k = 1; k <= 8; ++k) {
+                    float hz = f0 * (b ? 1.5f : 1.f) * (float) k;
+                    float fade = clampf((sr * 0.45f - hz) / (sr * 0.05f), 0, 1);
+                    w[cnt] = kTwoPi * std::min(hz, sr * 0.45f) / sr;
+                    gain[cnt] = std::pow(0.15f + 0.85f * e[bright], (float) (k - 1)) * (1.f - r) * 2.f * fade;
+                    ++cnt;
+                }
+            return cnt;
+        };
+        float w0[16], g0[16], w1[16], g1[16], r0, r1;
+        const int cnt = coefs(p.e0, w0, g0, r0);
+        coefs(p.e1, w1, g1, r1);
         const bool useSc = ctx.fxPlugin && on(p, sc) && ctx.scL;
         float* io[2] = {L, R};
         for (int c = 0; c < 2; ++c)
             for (int i = 0; i < n; ++i) {
+                const float t = (float) i / (float) n;
                 const float x = useSc ? (c ? ctx.scR[i] : ctx.scL[i]) : io[c][i];
+                const float r = r0 + (r1 - r0) * t;
                 float y = 0;
                 for (int k = 0; k < cnt; ++k) {
                     auto& s = st[c][k];
-                    float v = coef[k] * s.y1 - r * r * s.y2 + x * gain[k];
-                    s.y2 = s.y1; s.y1 = v; y += v;
+                    const float w = w0[k] + (w1[k] - w0[k]) * t;
+                    const float cw = std::cos(w) * r, sw = std::sin(w) * r;
+                    const float re = cw * s.y1 - sw * s.y2 + x * (g0[k] + (g1[k] - g0[k]) * t);
+                    const float im = sw * s.y1 + cw * s.y2;
+                    s.y1 = re; s.y2 = im; y += re;
                 }
                 io[c][i] = y;
             }
@@ -856,12 +880,12 @@ public:
                                 S.phFb = v; y = 0.5f * (y + v);
                             } break;
                             case 2: if (on(p, B.distOn)) { float d = audit::isRemoved(B.distDrive) ? 0.f : lerpP(p, B.distDrive, i, n); if (d > 0) { float s = distortSample(choiceOf(p, B.distType), y, d, 0, S.ds, sr, ctx.draw, 0); y = y + (s - y) * driveBlend(d); } } break;
-                            case 3: if (on(p, B.combOn)) { float dly = clampf(sr / lerpP(p, B.combFreq, i, n), 2.f, (float) S.comb.mask - 4); float o = y + lerpP(p, B.combFb, i, n) * S.comb.read(dly); S.comb.push(o); y = o * (1.f - 0.5f * std::fabs(lerpP(p, B.combFb, i, n))); } break;
+                            case 3: if (on(p, B.combOn)) { float target = clampf(sr / lerpP(p, B.combFreq, i, n), 2.f, (float) S.comb.mask - 4); if (S.combD <= 0) S.combD = target; S.combD += clampf(target - S.combD, -0.5f, 0.5f); float dly = S.combD; float o = y + lerpP(p, B.combFb, i, n) * S.comb.read(dly); S.comb.push(o); y = o * (1.f - 0.5f * std::fabs(lerpP(p, B.combFb, i, n))); } break;
                             case 4: if (on(p, B.crushOn)) { float lv = std::exp2(lerpP(p, B.crushBits, i, n) - 1.f); y = std::round(clampf(y, -1, 1) * lv) / lv; } break;
                             default: break;
                         }
                     }
-                    float g = audit::isRemoved(B.gain) ? 1.f : lerpP(p, B.gain, i, n);
+                    float g = audit::isRemoved(B.gain) ? 0.f : lerpP(p, B.gain, i, n); // removed band = silent
                     sum += y * g;
                 }
                 io[c][i] = sum;
@@ -869,7 +893,7 @@ public:
         }
     }
 private:
-    struct Band { Svf flt; float ph[4] = {}; float phFb = 0; DistState ds; FracDelay comb; };
+    struct Band { Svf flt; float ph[4] = {}; float phFb = 0; DistState ds; FracDelay comb; float combD = 0; };
     struct Chan { Lp4 a, b; Band band[3]; } ch[2];
     std::array<double, 6> phPh{};
 };

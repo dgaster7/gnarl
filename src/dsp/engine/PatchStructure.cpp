@@ -62,7 +62,8 @@ PatchStructure::PatchStructure() {
     const char* names[8] = {"Macro 1", "Macro 2", "Macro 3", "Macro 4", "Macro 5", "Macro 6", "Macro 7", "Macro 8"};
     for (int i = 0; i < 8; ++i) macroNames[(size_t) i] = names[i];
     for (auto& l : lfo) { l.a = sinePoints(); l.b = {{0, 1, 0}, {1, -1, 0}}; l.grid = 8; }
-    for (auto& s : seq) for (int i = 0; i < 32; ++i) s.value[(size_t) i] = (i % 4 == 0) ? 1.f : ((i % 2) ? -0.5f : 0.25f);
+    for (auto& s : seq) for (int i = 0; i < 32; ++i) { s.value[(size_t) i] = (i % 4 == 0) ? 1.f : ((i % 2) ? -0.5f : 0.25f); s.slide[(size_t) i] = (i % 4 == 2) ? 1 : 0; }
+    for (int k = 0; k < 4; ++k) { fn[(size_t) k].a = MS_Lfo1 + k; fn[(size_t) k].b = MS_Rnd1 + k; }
     for (auto& e : env) { e.pts = {{0, 0, 0}, {0.05f, 1, -0.5f}, {0.4f, 0.3f, -0.5f}, {0.7f, 0.6f, 0.3f}, {1, 0, -0.5f}}; e.sustain = -1; }
     draw[0].pts = {{-1, -1, 0}, {-0.5f, -0.85f, -0.4f}, {0, 0, 0}, {0.5f, 0.85f, 0.4f}, {1, 1, 0}};
     draw[1].pts = {{-1, 0.2f, 0}, {-0.6f, -1, 0}, {-0.2f, 0.6f, 0}, {0, 0, 0}, {0.2f, -0.6f, 0}, {0.6f, 1, 0}, {1, -0.2f, 0}};

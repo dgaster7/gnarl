@@ -122,7 +122,7 @@ void buildGlobal(std::vector<ParamDef>& v) {
     doc(b.cont("master_level", "Master Level", 0, 1, 0.7f, Unit::Gain, Role::Level), "Output gain; 0 is true silence.");
     b.plugins = kSynth;
     doc(b.integer("voices", "Voices", 1, 8, 1), "1 = monophonic; up to 8-voice polyphony.");
-    doc(ctx(b.toggle("legato", "Legato", true), {{"voices", 1}}), "Mono only: overlapping notes do not retrigger envelopes.");
+    doc(ctx(b.toggle("legato", "Legato", true), {{"voices", 1}, {"env1_d", 0.15f}, {"env1_s", 0.2f}}), "Mono only: overlapping notes do not retrigger envelopes.");
     doc(ctx(b.time("glide_time", "Glide", 0, 2000, 0, 200, Unit::Ms), {{"voices", 1}}), "Portamento time; 0 = no glide.");
     b.out.back().role = Role::Amount;
     doc(ctx(b.cont("glide_curve", "Glide Curve", -1, 1, 0, Unit::None), {{"voices", 1}, {"glide_time", 300}}), "Shape of the glide trajectory (-1 fast start, +1 slow start).");
@@ -165,8 +165,7 @@ void buildOsc(std::vector<ParamDef>& v, int k) {
     C(doc(b.cont(o + "phase", N + "Phase", 0, 360, 0, Unit::Degrees), "Start phase (key-sync mode)."), {{o + "phase_mode", 0}});
     b.out.back().modulatable = false; b.out.back().smoothMs = 0;
     C(doc(b.choice(o + "phase_mode", N + "Phase Mode", {"Key Sync", "Free Run", "Random"}, 0), "Phase reset on note-on, free-running, or random start."), {{o + "phase", 90}});
-    C(doc(b.toggle(o + "invert", N + "Invert", false), "Invert output polarity."), {{"oscb_level", 0.8f}, {"osca_level", 0.8f}, {"oscc_level", 0}});
-    if (k == 1) { b.out.back().context.push_back({"osca_level", 0.8f}); }
+    C(doc(b.toggle(o + "invert", N + "Invert", false), "Invert output polarity."));
     C(doc(b.toggle(o + "fixed", N + "Fixed Freq", false), "Ignore the keyboard and play the Fixed Freq."), {{o + "fixed_hz", 440}});
     C(doc(b.freq(o + "fixed_hz", N + "Fixed Freq Hz", 1, 20000, 110, 440), "Frequency used when Fixed Freq is on."), {{o + "fixed", 1}});
     C(doc(b.cont(o + "level", N + "Level", 0, 1, k == 0 ? 0.8f : 0.f, Unit::Gain, Role::Level), "Oscillator level; 0 = silent."));
@@ -205,7 +204,8 @@ void buildOsc(std::vector<ParamDef>& v, int k) {
         const std::string p = o + "fm_op" + std::to_string(op) + "_";
         const std::string n = N + "Op" + std::to_string(op) + " ";
         std::vector<ContextValue> base = {{o + "engine", OE_FM}, {o + "fm_alg", 0}};
-        if (op != 1) base.push_back({p + "level", 0.6f});
+        // alg 0 is the 4>3>2>1 stack: every operator between this one and the carrier must be audible
+        for (int j = 2; j <= op; ++j) base.push_back({o + "fm_op" + std::to_string(j) + "_level", 0.6f});
         if (op == 1) base.push_back({o + "fm_op2_level", 0.0f});
         C(doc(b.cont(p + "ratio", n + "Ratio", 0.125f, 32, op == 1 ? 1.f : 2.f, Unit::Ratio), "Frequency ratio to the note."), base);
         b.out.back().skew = skewForCentre(0.125f, 32, 2);
@@ -250,7 +250,7 @@ void buildOsc(std::vector<ParamDef>& v, int k) {
         {"twist", "Twist", "Wrap and invert past a threshold."},
         {"drive", "Drive", "Boost and clip."},
         {"window", "Window", "Triangular window over the cycle."},
-        {"offset", "Offset", "Rotate the cycle (phase offset)."},
+        {"offset", "Offset", "Rotate the cycle (0..180 degrees phase offset)."},
         {"wave", "Wave", "Morph toward a sine."},
         {"bits", "Bits", "Bit reduction from 32 bits down to 1 bit."},
         {"shrink", "Shrink", "Compress the cycle and zero-fill."},
@@ -271,6 +271,7 @@ void buildOsc(std::vector<ParamDef>& v, int k) {
         doc(p, s.d);
         if (std::string(s.id) == "dc") p.doc = "DC adjust: shifts the cycle up/down before Shaper stages (re-band-limited; output DC-blocked).";
         if (std::string(s.id) == "mp_width") { p.role = Role::Continuous; p.def = 0.1f; C(p, {{o + "sh_multipoint", 1}}); }
+        else if (std::string(s.id) == "dc") C(p, {{o + "sh_drive", 0.5f}});
         else C(p);
     }
 }
@@ -664,7 +665,7 @@ void buildFx(std::vector<ParamDef>& v) {
         C(doc(b.time("fx_spectral_smooth", "Spectral Smooth", 0, 500, 20, 50, Unit::Ms), "Gate smoothing time."), m, {{"fx_spectral_thresh", -35}});
     }
     {
-        std::string m = "tamer"; mod(m, "Resonance Tamer"); onCtx(m, {{"fx_tamer_depth", 1}});
+        std::string m = "tamer"; mod(m, "Resonance Tamer"); onCtx(m, {{"fx_tamer_depth", 1}, {"fx_tamer_sens", 1}});
         C(doc(b.cont("fx_tamer_depth", "Tamer Depth", 0, 1, 0.5f, Unit::Percent, Role::Amount), "Max suppression; 0 = none."), m, {{"fx_tamer_sens", 1}});
         C(doc(b.cont("fx_tamer_sens", "Tamer Sensitivity", 0, 1, 0.5f, Unit::Percent), "How peaky a band must be to be suppressed."), m, {{"fx_tamer_depth", 1}});
         C(doc(b.time("fx_tamer_speed", "Tamer Speed", 1, 500, 30, 30, Unit::Ms), "Response time."), m, {{"fx_tamer_depth", 1}, {"fx_tamer_sens", 1}});
@@ -710,11 +711,13 @@ void buildFx(std::vector<ParamDef>& v) {
         b.plugins = kBoth;
     }
     {
-        std::string m = "width"; mod(m, "Width"); onCtx(m, {{"fx_width_amount", 1.8f}});
-        C(doc(b.cont("fx_width_amount", "Width", 0, 2, 1, Unit::None, Role::Neutral), "Stereo width; 1 = unchanged, 0 = mono."), m);
+        std::string m = "width"; mod(m, "Width");
+        const std::vector<ContextValue> stereo = {{"osca_unison", 5}, {"osca_spread", 1}, {"osca_detune", 25}};
+        { auto c = stereo; c.push_back({"fx_width_amount", 1.8f}); onCtx(m, c); }
+        C(doc(b.cont("fx_width_amount", "Width", 0, 2, 1, Unit::None, Role::Neutral), "Stereo width; 1 = unchanged, 0 = mono."), m, stereo);
         b.out.back().neutral = 1;
-        C(doc(b.toggle("fx_width_mono_on", "Mono Bass", false), "Make everything below Mono Freq mono."), m, {{"fx_width_mono_hz", 300}});
-        C(doc(b.freq("fx_width_mono_hz", "Mono Below", 20, 1000, 120, 150), "Mono crossover frequency."), m, {{"fx_width_mono_on", 1}});
+        { auto c = stereo; c.push_back({"fx_width_mono_hz", 600}); C(doc(b.toggle("fx_width_mono_on", "Mono Bass", false), "Make everything below Mono Freq mono."), m, c); }
+        { auto c = stereo; c.push_back({"fx_width_mono_on", 1}); C(doc(b.freq("fx_width_mono_hz", "Mono Below", 20, 1000, 120, 150), "Mono crossover frequency."), m, c); }
     }
     {
         b.section = "FX Clipper";

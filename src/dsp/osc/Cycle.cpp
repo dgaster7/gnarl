@@ -8,7 +8,7 @@ namespace gnarl {
 bool CycleInputs::sameAs(const CycleInputs& o) const {
     auto q = [](float a, float b) { return std::fabs(a - b) < 1e-5f; };
     if (source != o.source || table != o.table || interpFrames != o.interpFrames || warpMode != o.warpMode || maxHarmonic != o.maxHarmonic || seed != o.seed) return false;
-    if (!q(vaShape, o.vaShape) || !q(vaPw, o.vaPw) || !q(framePos, o.framePos) || !q(warp, o.warp)) return false;
+    if (!q(vaShape, o.vaShape) || !q(vaPw, o.vaPw) || !q(syncRatio, o.syncRatio) || !q(framePos, o.framePos) || !q(warp, o.warp)) return false;
     for (int i = 0; i < kNumShaper; ++i) if (!q(sh[(size_t) i], o.sh[(size_t) i])) return false;
     return true;
 }
@@ -34,8 +34,10 @@ void CycleBuilder::rawCycle(const CycleInputs& in, float* x) {
     if (in.source == 0) {
         const float s = clampf(in.vaShape, 0, 3);
         const float pw = clampf(in.vaPw, 0.01f, 0.99f);
+        const float sr = std::max(1.f, in.syncRatio);
         for (int i = 0; i < kCycle; ++i) {
-            float t = (float) i / kCycle;
+            float t = (float) i / kCycle * sr; // hard sync: `sr` slave cycles per master cycle, reset at the master wrap
+            t -= std::floor(t);
             float sine = std::sin(kTwoPi * t), tr = tri(t), saw = 1.f - 2.f * t, pul = t < pw ? 1.f : -1.f;
             float v;
             if (s < 1) v = lerp(sine, tr, s);
@@ -91,7 +93,7 @@ void CycleBuilder::build(const CycleInputs& in, float* out) {
     }
     if (s[SH_Drive] > 0) { float g = 1.f + 10.f * s[SH_Drive]; for (int i = 0; i < kCycle; ++i) x[i] = clampf(x[i] * g, -1.f, 1.f); }
     if (s[SH_Window] > 0) for (int i = 0; i < kCycle; ++i) { float t = (float) i / kCycle; float win = 1.f - std::fabs(2.f * t - 1.f); x[i] *= 1.f - s[SH_Window] + s[SH_Window] * win; }
-    if (s[SH_Offset] > 0) { int off = (int) std::lround(s[SH_Offset] * kCycle); for (int i = 0; i < kCycle; ++i) y[i] = x[(i + off) & (kCycle - 1)]; std::swap(x, y); }
+    if (s[SH_Offset] > 0) { int off = (int) std::lround(s[SH_Offset] * 0.5f * kCycle); for (int i = 0; i < kCycle; ++i) y[i] = x[(i + off) & (kCycle - 1)]; std::swap(x, y); }
     if (s[SH_Wave] > 0) {
         double r = 0; for (int i = 0; i < kCycle; ++i) r += (double) x[i] * x[i];
         float amp = (float) std::sqrt(2.0 * r / kCycle);

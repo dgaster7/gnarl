@@ -30,12 +30,90 @@ inline float fmWave(int w, float ph) { // ph in cycles, any value
     }
 }
 inline uint32_t hash32(uint32_t x) { x ^= x >> 16; x *= 0x7feb352d; x ^= x >> 15; x *= 0x846ca68b; x ^= x >> 16; return x; }
+
+// Band-limited step residual (integrated Blackman-windowed sinc, cutoff 0.45 fs), 16 taps, 64x oversampled.
+struct BlepTable {
+    static constexpr int kTaps = 32, kHalf = 16, kOver = 64, kSize = kTaps * kOver + 1;
+    float r[kSize];
+    static double i0(double x) { double s = 1, t = 1; for (int k = 1; k < 60; ++k) { t *= (x / (2 * k)) * (x / (2 * k)); s += t; } return s; }
+    BlepTable() {
+        static double S[kSize]; double acc = 0;
+        const double fc = 0.46, dt = 1.0 / kOver, beta = 9.0;
+        for (int k = 0; k < kSize; ++k) {
+            double t = -kHalf + k * dt;
+            double x = 2 * fc * t;
+            double sinc = std::fabs(x) < 1e-12 ? 1.0 : std::sin(M_PI * x) / (M_PI * x);
+            double rr = t / kHalf;
+            double w = i0(beta * std::sqrt(std::max(0.0, 1 - rr * rr))) / i0(beta);
+            acc += 2 * fc * sinc * w * dt;
+            S[k] = acc;
+        }
+        for (int k = 0; k < kSize; ++k) { double t = -kHalf + k * dt; r[k] = (float) (S[k] / acc - (t >= 0 ? 1.0 : 0.0)); }
+    }
+    inline float at(float x) const { // x in samples relative to the step
+        float pos = (x + (float) kHalf) * kOver;
+        if (pos <= 0 || pos >= kSize - 1) return 0.f;
+        int i = (int) pos; float f = pos - (float) i;
+        // never interpolate across the step itself
+        if (i == kHalf * kOver - 1 && x < 0) return r[i];
+        return r[i] + (r[i + 1] - r[i]) * f;
+    }
+};
+const BlepTable& blepTable() { static const BlepTable t; return t; }
+
 } // namespace
+
+// Band-limited saw tables, one per half-octave band, built for the current sample rate.
+struct SawTables {
+    float rate = 0;
+    std::vector<std::array<float, CycleBuilder::kPadded>> bands;
+    void build(float sr) {
+        rate = sr;
+        bands.assign(32, {});
+        for (int b = 0; b < 32; ++b) {
+            float top = std::exp2((b + 1) * 0.5f);
+            int hmax = std::clamp((int) (0.45f * sr / top), 1, kCycle / 2 - 1);
+            auto& t = bands[(size_t) b];
+            for (int i = 0; i < kCycle; ++i) {
+                double ph = (double) i / kCycle, v = 0;
+                for (int h = 1; h <= hmax; ++h) v += std::sin(2 * M_PI * h * ph) / h;
+                t[(size_t) i + 1] = (float) (v * (2.0 / M_PI) * 0.92);
+            }
+            t[0] = t[kCycle]; t[kCycle + 1] = t[1]; t[kCycle + 2] = t[2]; t[kCycle + 3] = t[3];
+        }
+    }
+    const float* forHz(float hz) const { int b = std::clamp((int) std::floor(std::log2(std::max(hz, 1.f)) * 2.f), 0, 31); return bands[(size_t) b].data(); }
+};
+static std::mutex gSawLock;
+static std::vector<std::shared_ptr<SawTables>> gSaws;
+static std::shared_ptr<SawTables> sawTablesFor(float sr) {
+    std::lock_guard<std::mutex> g(gSawLock);
+    for (auto& t : gSaws) if (t->rate == sr) return t;
+    auto t = std::make_shared<SawTables>(); t->build(sr); gSaws.push_back(t); return t;
+}
+
+inline void OscSlot::blepEvent(int u, float jump, float frac) {
+    // the step happened `frac` samples before the current sample (which already holds the post-step value)
+    auto& b = bl[(size_t) u];
+    const auto& T = blepTable();
+    for (int d = -15; d <= 16; ++d) b.corr[(size_t) ((b.pos + d) & 63)] += jump * T.at((float) d + frac);
+}
+inline float OscSlot::blepOut(int u, float v) {
+    auto& b = bl[(size_t) u];
+    b.hist[(size_t) (b.pos & 31)] = v;
+    const int o = b.pos - 16;
+    float y = b.hist[(size_t) (o & 31)] + b.corr[(size_t) (o & 63)];
+    b.corr[(size_t) (o & 63)] = 0;
+    b.pos = (b.pos + 1) & 1023;
+    return y;
+}
 
 void OscSlot::prepare(float sampleRate) {
     sr = sampleRate;
-    static const HalfbandCoefs dc = HalfbandCoefs::design(6, 0.1);
-    for (auto& f : fm) f.dec.init(dc);
+    static const HalfbandCoefs dc = HalfbandCoefs::design(8, 0.06), dc2 = HalfbandCoefs::design(4, 0.25);
+    for (auto& f : fm) { f.dec.init(dc); f.dec2.init(dc2); }
+    saws = sawTablesFor(sr);
+    blepTable();
     haveTable = false;
 }
 
@@ -83,10 +161,12 @@ void OscSlot::noteOn(const OscBlockParams& p, uint32_t seed, bool legato) {
                 hv[(size_t) u].c[(size_t) k] = std::cos(a); hv[(size_t) u].s[(size_t) k] = std::sin(a);
             }
         }
-        blepPrev[(size_t) u] = 0; prevOut[(size_t) u] = 0;
+        bl[(size_t) u] = BlepRing(); prevOut[(size_t) u] = 0;
+        fm[(size_t) u].dec2.reset();
     }
     for (auto& e : opEnv) e.noteOn(false);
     opEnvStart.fill(0); opEnvEnd.fill(0);
+    for (int k = 0; k < 4; ++k) { opLvlStart[(size_t) k] = opLvlEnd[(size_t) k] = p.op[(size_t) k].level; opFbStart[(size_t) k] = opFbEnd[(size_t) k] = p.op[(size_t) k].fb; }
     xfade = 0;
     haveTable = false;
     bandIndex = -1000;
@@ -104,25 +184,27 @@ float OscSlot::cycleSample(float phase) const {
 }
 
 void OscSlot::rebuildIfNeeded(CycleBuilder& b, bool force) {
-    const bool cycleEngine = P.engine == OE_VA || P.engine == OE_Wavetable || P.engine == OE_GrainFormant;
+    const bool hsSynced = P.engine == OE_HyperSaw && P.hsSync > 1.f;
+    const bool cycleEngine = P.engine == OE_VA || P.engine == OE_Wavetable || P.engine == OE_GrainFormant || hsSynced;
     if (!cycleEngine) return;
     CycleInputs in;
-    in.source = P.engine == OE_VA ? 0 : 1;
-    in.vaShape = P.vaShape; in.vaPw = P.vaPw;
+    in.source = (P.engine == OE_VA || hsSynced) ? 0 : 1;
+    in.vaShape = hsSynced ? 2.f : P.vaShape; in.vaPw = P.vaPw;
+    in.syncRatio = P.engine == OE_VA ? std::max(1.f, P.vaSync) : (hsSynced ? P.hsSync : 1.f);
     in.table = P.table;
     in.framePos = P.engine == OE_GrainFormant ? P.gfIndex : P.wtPos;
     in.interpFrames = P.engine == OE_GrainFormant ? P.gfInterp : true;
     in.warpMode = P.engine == OE_Wavetable ? P.warpMode : 0;
     in.warp = P.engine == OE_Wavetable ? P.warp : 0;
-    in.sh = P.sh;
+    in.sh = hsSynced ? std::array<float, kNumShaper>{} : P.sh;
     // band limit from the highest frequency this table will be read at
     float readHz = std::max(P.hzStart, P.hzEnd);
-    if (P.engine == OE_VA) readHz *= std::max(1.f, P.vaSync);
     if (P.engine == OE_GrainFormant) {
         float fg = P.gfMode == 1 ? 261.63f * std::exp2(P.gfShift / 12.f) : readHz * std::exp2(P.gfShift / 12.f);
         readHz = std::max(fg * (1.f + P.gfSpread * 2.f), readHz);
     }
     readHz *= std::exp2(std::max(P.detune, 0.f) / 1200.f);
+    if (hsSynced) readHz *= std::exp2(P.hsSpread * 60.f / 1200.f);
     int band = (int) std::floor(std::log2(std::max(readHz, 1.f)) * 2.f);
     float bandTop = std::exp2((band + 1) * 0.5f);
     in.maxHarmonic = std::clamp((int) (0.45f * sr / bandTop), 1, kCycle / 2 - 1);
@@ -180,10 +262,14 @@ void OscSlot::beginBlock(const OscBlockParams& p, int nSamples, CycleBuilder& bu
         float f = 1.f - 0.95f * P.warp;
         incStart *= f; incEnd *= f;
     }
+    if (P.engine == OE_HyperSaw && saws) sawTab = saws->forHz(std::max(P.hzStart, P.hzEnd) * std::exp2(P.hsSpread * 60.f / 1200.f + P.detune / 1200.f));
     if (++rebuildCounter >= 4 || !haveTable || prevEngine != P.engine) { rebuildCounter = 0; rebuildIfNeeded(builder, prevEngine != P.engine); }
     if (P.engine == OE_FM) {
         for (int k = 0; k < 4; ++k) {
             EnvParams ep; ep.a = P.op[(size_t) k].a; ep.d = P.op[(size_t) k].d; ep.s = P.op[(size_t) k].s; ep.r = P.op[(size_t) k].r; ep.dc = -0.5f; ep.rc = -0.5f;
+            opLvlStart[(size_t) k] = opLvlEnd[(size_t) k]; opLvlEnd[(size_t) k] = P.op[(size_t) k].level;
+            opFbStart[(size_t) k] = opFbEnd[(size_t) k]; opFbEnd[(size_t) k] = P.op[(size_t) k].fb;
+            if (prevEngine != OE_FM) { opLvlStart[(size_t) k] = opLvlEnd[(size_t) k]; opFbStart[(size_t) k] = opFbEnd[(size_t) k]; }
             opEnvStart[(size_t) k] = opEnv[(size_t) k].value();
             opEnvEnd[(size_t) k] = opEnv[(size_t) k].advance(ep, dt);
         }
@@ -232,13 +318,13 @@ OscOut OscSlot::tick(int i, const ChainIn& ci) {
             case OE_VA:
             case OE_Wavetable: {
                 double& sp = slave[(size_t) u];
-                const float ratio = P.engine == OE_VA ? std::max(1.f, P.vaSync) : 1.f;
+                const float ratio = 1.f; // analog-engine sync is built into the cycle
                 const double sInc = (double) inc * ratio;
                 double sBefore = sp;
                 sp += sInc;
                 float jump = 0, jfrac = 0; bool jumpEv = false;
                 if ((ratio > 1.f && wrap) || reset) {
-                    // hard sync: reset slave at the fractional position of the master wrap (polyBLEP-corrected)
+                    // hard sync: reset the slave at the fractional position of the master wrap, BLEP-corrected
                     float fr = reset ? resetFrac : frac;
                     double atEvent = sBefore + sInc * (1.0 - fr);
                     float vb = cycleSample((float) (atEvent - std::floor(atEvent)) + pmOff - std::floor(pmOff));
@@ -250,67 +336,50 @@ OscOut OscSlot::tick(int i, const ChainIn& ci) {
                 }
                 sp -= std::floor(sp);
                 float rp = (float) sp + pmOff; rp -= std::floor(rp);
-                float cur = cycleSample(rp);
-                if (jumpEv) {
-                    blepPrev[(size_t) u] += 0.5f * jump * jfrac * jfrac;
-                    cur += -0.5f * jump * (1.f - jfrac) * (1.f - jfrac);
-                }
-                v = blepPrev[(size_t) u];
-                blepPrev[(size_t) u] = cur;
+                v = cycleSample(rp);
+                if (jumpEv) blepEvent(u, jump, jfrac);
                 break;
             }
             case OE_HyperSaw: {
                 const float dens = clampf(P.hsDensity, 0, 1) * 8.f;
                 const int nsaw = 1 + (int) std::ceil(dens - 1e-6f);
-                float acc = 0, gsum = 0, pre = 0, post = 0;
-                const float ratio = std::max(1.f, P.hsSync);
+                const bool synced = P.hsSync > 1.f && haveTable;
+                float acc = 0, gsum = 0;
                 for (int j = 0; j < nsaw; ++j) {
                     float pos = nsaw == 1 ? 0.f : ((float) j / (nsaw - 1)) * 2.f - 1.f;
                     float det = std::exp2(pos * std::fabs(pos) * P.hsSpread * 60.f / 1200.f);
                     float g = (j == nsaw - 1 && j > 0 && dens < (float) (nsaw - 1)) ? dens - (float) (nsaw - 2) : 1.f;
                     double& sp = hs[(size_t) u][(size_t) j];
-                    double sInc = (double) inc * ratio * det;
-                    double sBefore = sp;
-                    sp += sInc;
-                    if ((ratio > 1.f && wrap) || reset) {
-                        // hard sync of every saw to the fundamental, polyBLEP-corrected on both sides of the reset
-                        float fr = reset ? resetFrac : frac;
-                        double atEvent = sBefore + sInc * (1.0 - fr);
-                        float vb = 1.f - 2.f * (float) (atEvent - std::floor(atEvent));
-                        float jump = 1.f - vb;
-                        pre += g * 0.5f * jump * fr * fr;
-                        post += -g * 0.5f * jump * (1.f - fr) * (1.f - fr);
-                        sp = sInc * fr;
-                    }
-                    if (sp >= 1.0) sp -= std::floor(sp);
+                    sp += (double) inc * det;
+                    if (reset) sp = (double) inc * det * resetFrac;
+                    sp -= std::floor(sp);
                     float x = (float) sp + pmOff; x -= std::floor(x);
-                    float s = 1.f - 2.f * x;
-                    s += polyBlep(x, (float) std::min(sInc, 0.5));
-                    acc += s * g; gsum += g * g;
+                    // unsynced: band-limited saw table; synced: each saw plays the band-limited synced-saw cycle
+                    // at its own (detuned) master frequency, so sync never aliases
+                    acc += (synced ? cycleSample(x) : readCycle(sawTab, x)) * g;
+                    gsum += g * g;
                 }
-                const float norm = 0.6f / std::sqrt(std::max(gsum, 1e-6f));
-                v = blepPrev[(size_t) u] + pre * norm;
-                blepPrev[(size_t) u] = (acc + post) * norm;
+                v = acc * 0.6f / std::sqrt(std::max(gsum, 1e-6f));
                 break;
             }
             case OE_FM: {
                 auto& f = fm[(size_t) u];
                 const FmAlg& alg = kAlgs[std::clamp(P.fmAlg, 0, 7)];
-                float outs[2];
-                for (int sub = 0; sub < 2; ++sub) {
-                    const float tt = ((float) i + 0.5f * (float) sub) / (float) n;
+                float outs[4];
+                for (int sub = 0; sub < 4; ++sub) {
+                    const float tt = ((float) i + 0.25f * (float) sub) / (float) n;
                     float o[4];
                     for (int k = 3; k >= 0; --k) {
                         const auto& op = P.op[(size_t) k];
-                        double opInc = op.fixed ? op.freq / (2.0 * sr) : (double) inc * op.ratio * 0.5;
+                        double opInc = op.fixed ? op.freq / (4.0 * sr) : (double) inc * op.ratio * 0.25;
                         f.ph[(size_t) k] += opInc;
                         f.ph[(size_t) k] -= std::floor(f.ph[(size_t) k]);
                         float env = opEnvStart[(size_t) k] + (opEnvEnd[(size_t) k] - opEnvStart[(size_t) k]) * tt;
                         float mod = 0;
                         for (int s2 = 0; s2 < 4; ++s2) if (alg.mods[k] & (1 << s2)) mod += o[s2];
-                        mod += op.fb * f.out[(size_t) k] * 0.35f;
+                        mod += (opFbStart[(size_t) k] + (opFbEnd[(size_t) k] - opFbStart[(size_t) k]) * tt) * f.out[(size_t) k] * 0.35f;
                         float w = fmWave(op.wave, (float) f.ph[(size_t) k] + mod + pmOff);
-                        float lvl = op.level * env;
+                        float lvl = (opLvlStart[(size_t) k] + (opLvlEnd[(size_t) k] - opLvlStart[(size_t) k]) * tt) * env;
                         f.out[(size_t) k] = w;
                         o[k] = w * lvl * ((alg.carriers & (1 << k)) ? 1.f : 1.2f); // modulation index in cycles (up to ~1.2 = 7.5 rad)
                     }
@@ -318,7 +387,7 @@ OscOut OscSlot::tick(int i, const ChainIn& ci) {
                     for (int k = 0; k < 4; ++k) if (alg.carriers & (1 << k)) { c += o[k]; ++nc; }
                     outs[sub] = c / (float) std::max(1, nc) * (nc > 1 ? 1.5f : 1.f);
                 }
-                v = f.dec.process(outs[0], outs[1]);
+                v = f.dec.process(f.dec2.process(outs[0], outs[1]), f.dec2.process(outs[2], outs[3]));
                 break;
             }
             case OE_GrainFormant: {
@@ -337,9 +406,10 @@ OscOut OscSlot::tick(int i, const ChainIn& ci) {
                     if (st.ph >= 1.0 || (sIdx == 0 && reset)) {
                         st.ph -= std::floor(st.ph);
                         auto& g = st.g[(size_t) st.next]; st.next = (st.next + 1) % 3;
-                        g.age = 0; g.rp = 0;
+                        const float since = (float) (st.ph / std::max((double) fInc, 1e-9)); // grain starts at the exact (fractional) period boundary
                         g.len = (P.gfComplex ? 1.f : 2.f) / std::max(fInc, 1e-6f);
                         g.inc = fg / sr;
+                        g.age = since; g.rp = g.inc * since;
                     }
                     float sv = 0;
                     for (auto& g : st.g) {
@@ -375,6 +445,7 @@ OscOut OscSlot::tick(int i, const ChainIn& ci) {
             }
             default: break;
         }
+        v = blepOut(u, v);
         // chain modes acting on the output
         if (ci.amount > 0) {
             switch (ci.mode) {

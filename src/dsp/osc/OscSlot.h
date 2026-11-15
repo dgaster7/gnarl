@@ -4,6 +4,9 @@
 #include "mod/ModSources.h"
 #include "util/Oversampler.h"
 #include <array>
+#include <memory>
+#include <mutex>
+#include <vector>
 
 namespace gnarl {
 
@@ -47,7 +50,14 @@ private:
     std::array<uint8_t, kMaxUni> bus{};
     std::array<double, kMaxUni> fph{};   // fundamental phase 0..1
     std::array<double, kMaxUni> slave{}; // cycle-osc slave phase (sync)
-    std::array<float, kMaxUni> blepPrev{}, prevOut{};
+    std::array<float, kMaxUni> prevOut{};
+    // windowed-sinc BLEP: every engine output is delayed by 16 samples so step corrections can be applied on both sides
+    struct BlepRing { std::array<float, 64> corr{}; std::array<float, 32> hist{}; int pos = 0; };
+    std::array<BlepRing, kMaxUni> bl{};
+    inline void blepEvent(int u, float jump, float frac);
+    inline float blepOut(int u, float v);
+    const float* sawTab = nullptr; // band-limited saw for the HyperSaw (chosen per block)
+    std::shared_ptr<struct SawTables> saws;
     float incStart = 0, incEnd = 0;     // fundamental phase increment
     float raw = 0;
     // cycle tables
@@ -57,9 +67,9 @@ private:
     // hypersaw
     std::array<std::array<double, 9>, kMaxUni> hs{};
     // fm
-    struct FmVoice { std::array<double, 4> ph{}; std::array<float, 4> out{}; IirDown2 dec; };
+    struct FmVoice { std::array<double, 4> ph{}; std::array<float, 4> out{}; IirDown2 dec, dec2; };
     std::array<FmVoice, kMaxUni> fm;
-    std::array<Envelope, 4> opEnv; std::array<float, 4> opEnvStart{}, opEnvEnd{};
+    std::array<Envelope, 4> opEnv; std::array<float, 4> opEnvStart{}, opEnvEnd{}, opLvlStart{}, opLvlEnd{}, opFbStart{}, opFbEnd{};
     // grain
     struct Grain { double rp = 0; float age = -1; float len = 1; double inc = 0; };
     struct GStream { double ph = 0; std::array<Grain, 3> g{}; int next = 0; };

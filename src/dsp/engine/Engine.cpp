@@ -353,8 +353,9 @@ public:
             if (V(o.fixed) > 0.5f) return V(o.fixedHz) * std::exp2(fine / 1200.f);
             return noteToHz(pitchNote + trans + bendSt + fine / 100.f);
         };
-        p.hzStart = hz(v.pitchPrev, VP(o.fine));
-        p.hzEnd = hz(v.pitch, V(o.fine));
+        const bool fineRem = audit::isRemoved(o.fine);
+        p.hzStart = hz(v.pitchPrev, fineRem ? 0.f : VP(o.fine));
+        p.hzEnd = hz(v.pitch, fineRem ? 0.f : V(o.fine));
         p.unison = (int) std::lround(V(o.unison)); p.detune = V(o.detune); p.spread = V(o.spread); p.blend = V(o.blend); p.multi = V(o.multi) > 0.5f;
         p.phaseMode = (int) std::lround(V(o.phaseMode)); p.phase = V(o.phase);
         p.vaShape = V(o.vaShape); p.vaPw = V(o.vaPw); p.vaSync = V(o.vaSync);
@@ -401,9 +402,12 @@ public:
         float ea = V(f.env); if (audit::isRemoved(f.env)) ea = 0;
         if (ea != 0) cutoff *= std::exp2(ea * 8.f * envVal);
         float reso = V(f.reso);
-        if (k == 1 && linked) { cutoff *= std::exp2(g(G.linkCutoff) / 12.f); reso = clampf(reso + g(G.linkReso), 0, 1); }
+        if (k == 1 && linked) {
+            const float lc = audit::isRemoved(G.linkCutoff) ? 0.f : g(G.linkCutoff), lr = audit::isRemoved(G.linkReso) ? 0.f : g(G.linkReso);
+            cutoff *= std::exp2(lc / 12.f); reso = clampf(reso + lr, 0, 1);
+        }
         s.cutoff = cutoff; s.reso = reso;
-        s.sep = V(f.sep); s.morph = V(f.morph); s.gender = V(f.gender); s.shoulder = V(f.shoulder); s.shelf = V(f.shelf);
+        s.sep = V(f.sep); s.morph = V(f.morph); s.gender = audit::isRemoved(f.gender) ? 0.f : V(f.gender); s.shoulder = V(f.shoulder); s.shelf = V(f.shelf);
         s.poles = (int) std::lround(V(f.poles)); s.stages = (int) std::lround(V(f.stages)); s.opposing = V(f.opposing) > 0.5f; s.boost = V(f.boost) > 0.5f;
         const auto& own = F[(size_t) k];
         s.drive = vv(v, own.drive); if (audit::isRemoved(own.drive)) s.drive = 0;
@@ -453,8 +457,8 @@ public:
             // which oscillators must run: audible, or the source of an active link, or a routed mod source
             int lmode[3]; float lam0[3], lam1[3];
             for (int i = 0; i < 3; ++i) {
-                lmode[i] = (int) std::lround(g(G.linkMode[(size_t) i]));
-                lam0[i] = gp(G.linkAmount[(size_t) i]); lam1[i] = g(G.linkAmount[(size_t) i]);
+                lmode[i] = (int) std::lround(vv(v, G.linkMode[(size_t) i]));
+                lam0[i] = vvp(v, G.linkAmount[(size_t) i]); lam1[i] = vv(v, G.linkAmount[(size_t) i]);
                 if (audit::isRemoved(G.linkAmount[(size_t) i])) lam0[i] = lam1[i] = 0;
             }
             for (int k = 0; k < 3; ++k) on[k] = lv0[k] > 0 || lv1[k] > 0 || snd1[k] > 0;
@@ -612,7 +616,7 @@ public:
         float lv0[2], lv1[2], pn0[2], pn1[2];
         for (int k = 0; k < 2; ++k) {
             lv0[k] = vvp(v, F[(size_t) k].level); lv1[k] = vv(v, F[(size_t) k].level);
-            if (audit::isRemoved(F[(size_t) k].level)) lv0[k] = lv1[k] = 1;
+            if (audit::isRemoved(F[(size_t) k].level)) lv0[k] = lv1[k] = 0; // removing the output path = silence
             pn0[k] = vvp(v, F[(size_t) k].pan); pn1[k] = vv(v, F[(size_t) k].pan);
             if (audit::isRemoved(F[(size_t) k].pan)) pn0[k] = pn1[k] = 0;
         }
@@ -689,15 +693,17 @@ public:
             LfoParams lp = lfoParams(k, nullptr);
             gsrc[(size_t) (MS_Lfo1 + k)] = glfo[(size_t) k].advance(lp, dt, ppq, h.bpm, h.playing);
         }
+        auto P = [&](int p) { return effPrev[(size_t) p]; };
+        auto PI = [&](int p) { return (int) std::lround(effPrev[(size_t) p]); };
         for (int k = 0; k < 2; ++k) {
-            double beats = syncDivisions()[(size_t) std::clamp(ci(G.seqDiv[(size_t) k]), 0, (int) syncDivisions().size() - 1)].beats;
-            gsrc[(size_t) (MS_Seq1 + k)] = seq[(size_t) k].advance(st->seq[(size_t) k], ci(G.seqSteps[(size_t) k]), beats, g(G.seqSlide[(size_t) k]), ci(G.seqMode[(size_t) k]) == 0, dt, ppq, h.bpm);
+            double beats = syncDivisions()[(size_t) std::clamp(PI(G.seqDiv[(size_t) k]), 0, (int) syncDivisions().size() - 1)].beats;
+            gsrc[(size_t) (MS_Seq1 + k)] = seq[(size_t) k].advance(st->seq[(size_t) k], PI(G.seqSteps[(size_t) k]), beats, P(G.seqSlide[(size_t) k]), PI(G.seqMode[(size_t) k]) == 0, dt, ppq, h.bpm);
         }
         for (int k = 0; k < 4; ++k) {
-            float hz = g(G.rndRate[(size_t) k]);
-            if (b(G.rndSync[(size_t) k])) hz = (float) (h.bpm / 60.0 / syncDivisions()[(size_t) std::clamp(ci(G.rndDiv[(size_t) k]), 0, (int) syncDivisions().size() - 1)].beats);
-            float v = rnd[(size_t) k].advance(ci(G.rndType[(size_t) k]), hz, dt);
-            if (!b(G.rndBipolar[(size_t) k])) v = 0.5f * v + 0.5f;
+            float hz = P(G.rndRate[(size_t) k]);
+            if (P(G.rndSync[(size_t) k]) > 0.5f) hz = (float) (h.bpm / 60.0 / syncDivisions()[(size_t) std::clamp(PI(G.rndDiv[(size_t) k]), 0, (int) syncDivisions().size() - 1)].beats);
+            float v = rnd[(size_t) k].advance(PI(G.rndType[(size_t) k]), hz, dt);
+            if (P(G.rndBipolar[(size_t) k]) < 0.5f) v = 0.5f * v + 0.5f;
             gsrc[(size_t) (MS_Rnd1 + k)] = v;
         }
         for (int k = 0; k < 8; ++k) gsrc[(size_t) (MS_Macro1 + k)] = effPrev[(size_t) G.macro[(size_t) k]];
@@ -708,12 +714,14 @@ public:
     }
 
     LfoParams lfoParams(int k, const Voice* v) const {
-        auto val = [&](int p) { return v ? vv(*v, p) : g(p); };
+        // global LFOs are advanced before this block's global routes are applied, so they read the
+        // previous block's modulated values (one 16-sample block of modulation latency)
+        auto val = [&](int p) { return v ? vv(*v, p) : effPrev[(size_t) p]; };
         const auto& l = L[(size_t) k];
         LfoParams lp;
         lp.rateHz = val(l.rate); lp.sync = val(l.sync) > 0.5f;
         lp.beats = syncDivisions()[(size_t) std::clamp((int) std::lround(val(l.div)), 0, (int) syncDivisions().size() - 1)].beats;
-        lp.phase = val(l.phase) / 360.f; lp.offset = val(l.offset); lp.delay = val(l.delay); lp.fade = val(l.fade);
+        lp.phase = val(l.phase) / 360.f; lp.offset = audit::isRemoved(l.offset) ? 0.f : val(l.offset); lp.delay = val(l.delay); lp.fade = val(l.fade);
         lp.smooth = val(l.smooth); if (audit::isRemoved(l.smooth)) lp.smooth = 0;
         lp.mode = (int) std::lround(val(l.mode)); lp.morph = val(l.morph); lp.morphTime = val(l.morphTime);
         if (audit::isRemoved(l.morphTime)) lp.morphTime = 0;
@@ -780,8 +788,9 @@ public:
         // FX plugin input gain
         float* inGL = inGainL.data(); float* inGR = inGainR.data();
         if (fx) {
+            const bool igRem = audit::isRemoved(G.inGain);
             float g0 = dbToGain(gp(G.inGain)), g1 = dbToGain(g(G.inGain));
-            if (gp(G.inGain) == 0 && g(G.inGain) == 0) { std::memcpy(inGL, inL, sizeof(float) * (size_t) n); std::memcpy(inGR, inR, sizeof(float) * (size_t) n); }
+            if (igRem || (gp(G.inGain) == 0 && g(G.inGain) == 0)) { std::memcpy(inGL, inL, sizeof(float) * (size_t) n); std::memcpy(inGR, inR, sizeof(float) * (size_t) n); }
             else for (int i = 0; i < n; ++i) { float gg = g0 + (g1 - g0) * (float) i / (float) n; inGL[i] = inL[i] * gg; inGR[i] = inR[i] * gg; }
             followerUpdate(b(G.efSidechain) && scL ? scL : inGL, b(G.efSidechain) && scR ? scR : inGR, n);
         }
@@ -836,7 +845,8 @@ public:
             outL[i] = (mixL[(size_t) i] + subMix[(size_t) i]) * m;
             outR[i] = (mixR[(size_t) i] + subMix[(size_t) i]) * m;
         }
-        finalStage.process(outL, outR, n, b(G.clipOn), ci(G.clipMode), gp(G.clipCeiling), g(G.clipCeiling), gp(G.clipDrive), g(G.clipDrive));
+        const bool cdRem = audit::isRemoved(G.clipDrive);
+        finalStage.process(outL, outR, n, b(G.clipOn), ci(G.clipMode), gp(G.clipCeiling), g(G.clipCeiling), cdRem ? 0.f : gp(G.clipDrive), cdRem ? 0.f : g(G.clipDrive));
         if (!fx) followerUpdate(outL, outR, n);
     }
 
