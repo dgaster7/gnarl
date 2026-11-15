@@ -613,7 +613,7 @@ void buildFx(std::vector<ParamDef>& v) {
     {
         std::string m = "delay"; mod(m, "Delay"); onCtx(m, {});
         C(doc(b.time("fx_delay_time", "Delay Time", 1, 2000, 250, 250, Unit::Ms), "Delay time (free)."), m);
-        C(doc(b.toggle("fx_delay_sync", "Delay Sync", false), "Tempo-synced time."), m);
+        C(doc(b.toggle("fx_delay_sync", "Delay Sync", false), "Tempo-synced time."), m, {{"fx_delay_time", 600}});
         C(doc(b.choice("fx_delay_div", "Delay Division", divNames(), 11), "Tempo division."), m, {{"fx_delay_sync", 1}});
         C(doc(b.cont("fx_delay_fb", "Delay Feedback", 0, 0.98f, 0.4f, Unit::Percent, Role::Amount), "Feedback."), m);
         C(doc(b.freq("fx_delay_lp", "Delay High Cut", 200, 20000, 12000, 4000), "Low-pass in the loop."), m, {{"fx_delay_fb", 0.6f}});

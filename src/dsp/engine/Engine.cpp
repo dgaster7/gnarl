@@ -716,7 +716,7 @@ public:
         auto PI = [&](int p) { return (int) std::lround(effPrev[(size_t) p]); };
         for (int k = 0; k < 2; ++k) {
             double beats = syncDivisions()[(size_t) std::clamp(PI(G.seqDiv[(size_t) k]), 0, (int) syncDivisions().size() - 1)].beats;
-            gsrc[(size_t) (MS_Seq1 + k)] = seq[(size_t) k].advance(st->seq[(size_t) k], PI(G.seqSteps[(size_t) k]), beats, P(G.seqSlide[(size_t) k]), PI(G.seqMode[(size_t) k]) == 0, dt, ppq, h.bpm);
+            gsrc[(size_t) (MS_Seq1 + k)] = seq[(size_t) k].advance(st->seq[(size_t) k], PI(G.seqSteps[(size_t) k]), beats, P(G.seqSlide[(size_t) k]), PI(G.seqMode[(size_t) k]) == 0, dt, ppq, h.bpm, h.playing);
         }
         for (int k = 0; k < 4; ++k) {
             float hz = P(G.rndRate[(size_t) k]);

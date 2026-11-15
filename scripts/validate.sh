@@ -42,4 +42,14 @@ for spec in "aumu Gsyn Gnrl" "aumf Gfxp Gnrl"; do
     echo "   FAIL"; tail -30 "$ROOT/build/validation/auval-${spec// /_}.log"; FAIL=1
   fi
 done
+# host-level effect test through the built VST3 binaries (parameter -> DSP wiring)
+if [ "${1:-}" != "--installed" ]; then
+  HOST="$(dirname "$A")/tools/gnarl_host_artefacts/$CFG/gnarl_host"
+  for v in "${VST3S[@]}"; do
+    name="$(basename "$v" .vst3)"
+    echo "== host effect test $name"
+    if "$HOST" effect "$v" "$ROOT/build/validation/host_effect_${name// /_}.md" > "$ROOT/build/validation/host_effect_${name// /_}.log" 2>&1; then echo "   PASS ($(tail -1 "$ROOT/build/validation/host_effect_${name// /_}.log"))"
+    else echo "   FAIL"; tail -20 "$ROOT/build/validation/host_effect_${name// /_}.log"; FAIL=1; fi
+  done
+fi
 exit $FAIL

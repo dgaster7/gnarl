@@ -150,12 +150,14 @@ private:
 class StepSeq {
 public:
     void trigger() { trigPos = 0; }
-    float advance(const StepSeqData& d, int steps, double beats, float slide, bool retrigger, float dt, double ppq, double bpm) {
+    float advance(const StepSeqData& d, int steps, double beats, float slide, bool retrigger, float dt, double ppq, double bpm, bool hostPlaying = true) {
         steps = std::clamp(steps, 1, 32);
         double stepBeats = std::max(beats, 1e-6);
         double posSteps;
+        freePos += dt * bpm / 60.0 / stepBeats;
         if (retrigger) { trigPos += dt * bpm / 60.0 / stepBeats; posSteps = trigPos; }
-        else posSteps = ppq / stepBeats;
+        else if (hostPlaying) { posSteps = ppq / stepBeats; freePos = posSteps; } // follow the song position while playing
+        else posSteps = freePos;                                                  // transport stopped: keep running on our own clock
         double cyc = std::fmod(posSteps, (double) steps); if (cyc < 0) cyc += steps;
         int i = (int) cyc; float f = (float) (cyc - i);
         float v = d.value[(size_t) i];
@@ -170,7 +172,7 @@ public:
     }
     float out() const { return value; }
 private:
-    double trigPos = 0; float value = 0;
+    double trigPos = 0, freePos = 0; float value = 0;
 };
 
 class RandomSource {

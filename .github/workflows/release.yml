@@ -1,0 +1,45 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  release:
+    runs-on: macos-15
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+      - name: Configure (universal)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+      - name: Build
+        run: cmake --build build
+      - name: Check 1 (parameter audit), presets, unit tests, Check 3 (UI binding)
+        run: ctest --test-dir build --output-on-failure
+      - name: Check 2 (pluginval strictness 10, auval, host-level effect test)
+        run: scripts/validate.sh build/src/plugins Release
+      - name: Package and sign manifest
+        env:
+          GNARL_SIGNING_KEY: ${{ secrets.GNARL_SIGNING_KEY }}
+        run: |
+          REL="${GITHUB_REF_NAME#v}"
+          git tag -l --format='%(contents)' "$GITHUB_REF_NAME" > notes.txt
+          [ -s notes.txt ] || echo "GNARL $REL" > notes.txt
+          printf '\n\nInstall or update on any Mac (paste into Terminal):\n\n    curl -fsSL https://raw.githubusercontent.com/dgaster7/gnarl/main/install.sh | bash\n' >> notes.txt
+          scripts/package.sh "$REL" build notes.txt
+          cp notes.txt dist/RELEASE_NOTES.txt
+      - name: Reports
+        if: always()
+        run: |
+          mkdir -p dist/reports
+          cp build/parameter_audit.md build/preset_report.md dist/reports/ 2>/dev/null || true
+          cp -R build/validation dist/reports/ 2>/dev/null || true
+          (cd dist && zip -qry reports.zip reports && rm -rf reports)
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" --title "GNARL ${GITHUB_REF_NAME#v}" --notes-file dist/RELEASE_NOTES.txt \
+            dist/GNARL-macOS.zip dist/GNARL-content.zip dist/manifest.json dist/manifest.json.sig dist/reports.zip

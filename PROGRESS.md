@@ -11,7 +11,7 @@ Resume rule: read this file and CLAUDE.md, continue from the first unchecked ite
 - [x] 7. All filters, routing, link/offsets, drive stages; magnitude plots in docs/filters/
 - [x] 8. FX chain, all modules, then GNARL FX
 - [x] 9. Preset system, browser, Mutate, factory wavetables, factory presets (gated batches of 20)
-- [ ] 10. Updater, release workflow, install.sh, README
+- [x] 10. Updater, release workflow, install.sh, README
 - [ ] 11. Full Checks 1-3, CPU benchmarks, fix failures
 - [ ] 12. Delivery: v1.0.0 release, install as user, prove update + rollback (v1.0.1 + content update)
 - [ ] 13. Final report (docs/FINAL_REPORT.md)
@@ -28,3 +28,5 @@ Resume rule: read this file and CLAUDE.md, continue from the first unchecked ite
 - Every active distortion stage DC-blocks its wet path; synth output has a 5 Hz DC blocker; GNARL FX has none (neutral stays bit-transparent).
 - Mono-below-X uses an 8th-order side high-pass at 1.6x (side >20 dB down below X); contract test added.
 - Fixtures: tests/fixtures/1.0.0 (3 synth + 3 FX states with expected values).
+- Check 2 host-level effect test (gnarl_host) passes: GNARL 854/854, GNARL FX 528/528 through built VST3s. Step sequencers now run on their own clock when the transport is stopped (bug found by the host test).
+- CPU: median 4.4% of one core per preset (48k/256, 4x OS), max 6.5%.
