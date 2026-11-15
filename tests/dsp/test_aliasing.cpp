@@ -39,6 +39,7 @@ TEST_CASE("aliasing: every engine stays band-limited at high notes", "[aliasing]
             for (auto& [id, v] : c.set) p.set(id, v);
             RenderSpec s; s.seconds = 1.2; s.notes = {{0.0, 1.2, notes[k], 100, 64}};
             auto r = render(p, s);
+            if (A::toDb(A::rms(r.L, 9600)) < -60) { res[k] = 0; continue; } // silent output is a failure, not "no aliasing"
             res[k] = A::nonHarmonicDb(r.L, 48000, c.f0mul * 440.0 * std::pow(2.0, (notes[k] - 69) / 12.0), 9600, r.L.size());
         }
         bool ok = res[0] < c.limitDb;

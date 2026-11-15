@@ -205,8 +205,9 @@ void OscSlot::rebuildIfNeeded(CycleBuilder& b, bool force) {
     }
     readHz *= std::exp2(std::max(P.detune, 0.f) / 1200.f);
     if (hsSynced) readHz *= std::exp2(P.hsSpread * 60.f / 1200.f);
-    int band = (int) std::floor(std::log2(std::max(readHz, 1.f)) * 2.f);
-    float bandTop = std::exp2((band + 1) * 0.5f);
+    // quarter-octave band-limit steps: at most 19% pitch headroom, so high notes keep every harmonic below 0.45 fs
+    int band = (int) std::floor(std::log2(std::max(readHz, 1.f)) * 4.f);
+    float bandTop = std::exp2((band + 1) * 0.25f);
     in.maxHarmonic = std::clamp((int) (0.45f * sr / bandTop), 1, kCycle / 2 - 1);
     if (!force && haveTable && in.sameAs(inputs)) return;
     if (haveTable) {

@@ -467,8 +467,16 @@ int main(int argc, char** argv) {
     struct Job { bool fx; std::string cat; int idx; int global; bool needsSub; std::function<void(D&, int)> fn; int fxCat; };
     std::vector<Job> jobs;
     int global = 0;
+    // Content packs ship through content-only updates: CONTENT_VERSION >= 2 adds the "Update Pack" category.
+    const int contentVersion = std::getenv("GNARL_CONTENT_VERSION") ? std::atoi(std::getenv("GNARL_CONTENT_VERSION")) : 1;
     for (auto& c : synthCats) for (int i = 0; i < c.count; ++i) jobs.push_back({false, c.name, i, global++, c.needsSub, c.fn, -1});
     for (int c = 0; c < 6; ++c) for (int i = 0; i < fxCounts[c]; ++i) jobs.push_back({true, fxCats[c], i, global++, false, nullptr, c});
+    // appended after the original 200 so their names and seeds never change
+    if (contentVersion >= 2) {
+        auto pack = [](D& d, int i) { const decltype(&neuro) r[5] = {neuro, talking, fmGrowl, triPeak, glitch}; r[i % 5](d, i + 7); };
+        for (int i = 0; i < 5; ++i) jobs.push_back({false, "Update Pack", i, global++, false, pack, -1});
+    }
+    if (auto* only = std::getenv("GNARL_ONLY_CATEGORY")) { std::vector<Job> keep; for (auto& j : jobs) if (j.cat == only) keep.push_back(j); jobs = keep; }
 
     struct Out { std::string name, cat; bool fx; GateResult g; std::string file; int attempts; };
     std::vector<Out> results(jobs.size());
