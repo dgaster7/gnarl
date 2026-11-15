@@ -12,9 +12,9 @@ Resume rule: read this file and CLAUDE.md, continue from the first unchecked ite
 - [x] 8. FX chain, all modules, then GNARL FX
 - [x] 9. Preset system, browser, Mutate, factory wavetables, factory presets (gated batches of 20)
 - [x] 10. Updater, release workflow, install.sh, README
-- [ ] 11. Full Checks 1-3, CPU benchmarks, fix failures
-- [ ] 12. Delivery: v1.0.0 release, install as user, prove update + rollback (v1.0.1 + content update)
-- [ ] 13. Final report (docs/FINAL_REPORT.md)
+- [x] 11. Full Checks 1-3, CPU benchmarks, fix failures
+- [x] 12. Delivery: v1.0.0 release, install as user, prove update + rollback (v1.0.1 + content update)
+- [x] 13. Final report (docs/FINAL_REPORT.md)
 
 ## Notes / decisions log
 - 2026-11-15: Toolchain: cmake 4.5.0, ninja 1.13.2, Apple clang 14.0.3 (Command Line Tools only, no Xcode), macOS 13.4 SDK 13.3, arm64 host. JUCE 9.0.5, Catch2 v3.16.1, pluginval v1.0.4, Monocypher 4.0.3.
@@ -31,3 +31,5 @@ Resume rule: read this file and CLAUDE.md, continue from the first unchecked ite
 - Check 2 host-level effect test (gnarl_host) passes: GNARL 854/854, GNARL FX 528/528 through built VST3s. Step sequencers now run on their own clock when the transport is stopped (bug found by the host test).
 - CPU: median 4.4% of one core per preset (48k/256, 4x OS), max 6.5%.
 - pluginval found a real crash: background-thread state restore swapped the patch structure under the UI. Fixed with a locked swap + message-thread retirement; undo housekeeping deferred to the message thread. Universal Release: pluginval 10 x4, auval x2, host effect test all PASS.
+- Delivery: v1.0.0, v1.0.1, v1.0.2 and content-only v1.0.2-c2 published by the Release workflow. Installed via install.sh; in-plugin update 1.0.0->1.0.1, rollback, roll forward, 1.0.1->1.0.2 and content-only update all proven with scripts/update_e2e.sh. 1.0.0 state recalls with 0 mismatches. Final installed: 1.0.2 + content 2.
+- Updater bug found in e2e (two instances re-installing over the backup) fixed in 1.0.2. Duplicate "Osc X Warp" names fixed in 1.0.2.
