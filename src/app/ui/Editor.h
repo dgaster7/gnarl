@@ -24,7 +24,7 @@ private:
     ui::UiContext ctx;
     juce::Component root;
     juce::TooltipWindow tooltips{this, 600};
-    juce::Label title, presetName;
+    juce::Label title, versionLabel, presetName;
     juce::TextButton prevBtn{"<"}, nextBtn{">"}, abBtn{"A"}, copyAb{"A>B"}, undoBtn{"Undo"}, redoBtn{"Redo"}, mutateBtn{"Mutate"}, updateBadge{"Update"};
     juce::ComboBox sizeBox;
     std::unique_ptr<ui::ModKnob> master;

@@ -77,8 +77,13 @@ void PresetManager::rescan() {
             presets.add(pi);
         }
     };
-    scan(factoryDir().getChildFile(plug), "Factory");
     scan(contentDir().getChildFile("Presets").getChildFile(plug), "Content");
+    // downloaded content supersedes the factory copy built into the plugin (same category + name)
+    std::set<juce::String> inContent;
+    for (auto& p : presets) inContent.insert(p.category + "/" + p.name);
+    const int before = presets.size();
+    scan(factoryDir().getChildFile(plug), "Factory");
+    for (int i = presets.size(); --i >= before;) if (inContent.count(presets[i].category + "/" + presets[i].name)) presets.remove(i);
     scan(userDir(), "User");
     std::sort(presets.begin(), presets.end(), [](const PresetInfo& a, const PresetInfo& b) {
         if (a.bank != b.bank) return a.bank < b.bank;

@@ -11,6 +11,11 @@ GnarlEditor::GnarlEditor(GnarlProcessor& p) : juce::AudioProcessorEditor(p), pro
     addAndMakeVisible(root);
 
     title.setText(proc.isFxPlugin() ? "GNARL FX" : "GNARL", juce::dontSendNotification);
+    versionLabel.setText("v" + juce::String(GNARL_VERSION_STRING), juce::dontSendNotification);
+    versionLabel.setFont(juce::FontOptions(10.f));
+    versionLabel.setColour(juce::Label::textColourId, ui::colours::dim);
+    versionLabel.setTooltip("Installed GNARL version. Updates are in the SETTINGS tab.");
+    root.addAndMakeVisible(versionLabel);
     title.setFont(juce::FontOptions(22.f, juce::Font::bold));
     title.setColour(juce::Label::textColourId, ui::colours::accent);
     presetName.setFont(juce::FontOptions(15.f, juce::Font::bold));
@@ -95,7 +100,8 @@ void GnarlEditor::resized() {
     root.setBounds(0, 0, kBaseW, kBaseH);
     auto r = juce::Rectangle<int>(0, 0, kBaseW, kBaseH);
     auto header = r.removeFromTop(46).reduced(8, 6);
-    title.setBounds(header.removeFromLeft(proc.isFxPlugin() ? 120 : 90));
+    title.setBounds(header.removeFromLeft(proc.isFxPlugin() ? 112 : 82));
+    versionLabel.setBounds(header.removeFromLeft(44).withTrimmedTop(14));
     prevBtn.setBounds(header.removeFromLeft(28).reduced(1));
     presetName.setBounds(header.removeFromLeft(300).reduced(2, 0));
     nextBtn.setBounds(header.removeFromLeft(28).reduced(1));
