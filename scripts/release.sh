@@ -23,7 +23,7 @@ if [ "$MODE" = "plugin" ]; then
   GNARL_WRITE_FIXTURES="tests/fixtures/$VER" "build-release/tests/gnarl_app_tests_artefacts/Release/gnarl_app_tests" "[.make-fixtures]" >/dev/null
 fi
 git add -A
-git commit -qm "Release $TAG" -m "$NOTES"
+git commit -q --allow-empty -m "Release $TAG" -m "$NOTES"
 git tag -a "$TAG" -m "$NOTES"
 git push -q origin main "$TAG"
 echo "Pushed $TAG. Waiting for the release workflow..."
