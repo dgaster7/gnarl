@@ -48,6 +48,8 @@ public:
     bool pluginUpdateAvailable() const;
     bool contentUpdateAvailable() const;
     int installedContentVersion() const;
+    // Version of the GNARL bundles currently on disk (may be newer than the running code after an update).
+    static juce::String installedPluginVersion(const juce::File& vst3Dir);
     bool restartNeeded() const { return needsRestart.load(); }
 
     // ---- primitives (public for tests) ----

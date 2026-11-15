@@ -91,7 +91,7 @@ juce::String Updater::statusText() const {
     switch (currentStatus.load()) {
         case Status::Idle: return "Not checked yet";
         case Status::Checking: return "Checking for updates...";
-        case Status::UpToDate: return "Up to date (" + juce::String(GNARL_VERSION_STRING) + ")";
+        case Status::UpToDate: return "Up to date (" + installedPluginVersion(userVst3Dir()) + ")";
         case Status::UpdateAvailable: return "Version " + manifest.version + " is available";
         case Status::Downloading: return "Downloading and verifying...";
         case Status::Installed: return needsRestart ? "Installed. Restart your DAW to use the new version." : "Installed. New presets and wavetables are ready.";
@@ -101,9 +101,21 @@ juce::String Updater::statusText() const {
     return {};
 }
 
+juce::String Updater::installedPluginVersion(const juce::File& vst3Dir) {
+    if (auto xml = juce::parseXML(vst3Dir.getChildFile("GNARL.vst3/Contents/Info.plist")))
+        if (auto* dict = xml->getChildByName("dict"))
+            for (auto* k = dict->getFirstChildElement(); k; k = k->getNextElement())
+                if (k->getAllSubText() == "CFBundleShortVersionString" && k->getNextElement()) return k->getNextElement()->getAllSubText().trim();
+    return GNARL_VERSION_STRING;
+}
+
 bool Updater::pluginUpdateAvailable() const {
     const juce::ScopedLock l(lock);
-    return haveManifest && VersionNumber::parse(GNARL_VERSION_STRING) < VersionNumber::parse(manifest.pluginVersion.isNotEmpty() ? manifest.pluginVersion : manifest.version);
+    if (!haveManifest) return false;
+    // compare with what is installed on disk, not the running code: another instance (or an earlier
+    // click) may already have installed this update, and installing it twice would overwrite the backup
+    const auto target = VersionNumber::parse(manifest.pluginVersion.isNotEmpty() ? manifest.pluginVersion : manifest.version);
+    return VersionNumber::parse(installedPluginVersion(userVst3Dir())) < target;
 }
 int Updater::installedContentVersion() const {
     auto f = appDir().getChildFile("Content").getChildFile("version.txt");
@@ -233,7 +245,7 @@ juce::String Updater::doInstallPlugins(const juce::File& vst3Dir, const juce::Fi
     // backup: keep exactly one previous version
     auto backupRoot = appDir().getChildFile("Backup");
     backupRoot.deleteRecursively();
-    auto backup = backupRoot.getChildFile(GNARL_VERSION_STRING);
+    auto backup = backupRoot.getChildFile(installedPluginVersion(vst3Dir));
     juce::File dirs[2] = {vst3Dir, compDir};
     for (auto& d : dirs) d.createDirectory();
     juce::Array<int> moved;
@@ -277,7 +289,7 @@ juce::String Updater::doRollBack(const juce::File& vst3Dir, const juce::File& co
     // swap: current -> staging, backup -> current, staging -> backup (so you can roll forward again)
     auto staging = backupRoot.getChildFile(".swap");
     staging.deleteRecursively();
-    juce::String installedVersion = GNARL_VERSION_STRING;
+    juce::String installedVersion = installedPluginVersion(vst3Dir);
     for (int i = 0; i < 4; ++i) {
         auto cur = (i < 2 ? vst3Dir : compDir).getChildFile(kBundles[i][1]);
         auto b = backup.getChildFile(kBundles[i][0]).getChildFile(kBundles[i][1]);
@@ -330,6 +342,8 @@ void Updater::run() {
 void Updater::runSelfTestIfRequested() {
     auto* path = std::getenv("GNARL_UPDATER_SELFTEST");
     if (!path) return;
+    static std::atomic<bool> ran{false}; // hosts may create several instances; run once per process
+    if (ran.exchange(true)) return;
     juce::File result(path);
     juce::String log;
     auto err = doCheck(juce::URL(manifestUrl));

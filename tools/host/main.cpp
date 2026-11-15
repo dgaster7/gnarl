@@ -22,6 +22,9 @@ static std::unique_ptr<juce::AudioPluginInstance> load(const juce::String& path,
         if (!types.isEmpty()) break;
     }
     if (types.isEmpty()) { std::fprintf(stderr, "no plugin found in %s\n", path.toRawUTF8()); return nullptr; }
+    // Forward test hooks only now, after scanning: the scan may create a throwaway instance which must not act on them.
+    for (auto* v : {"GNARL_UPDATER_SELFTEST", "GNARL_UPDATER_SELFTEST_ROLLBACK", "GNARL_UPDATE_MANIFEST_URL"})
+        if (auto* x = std::getenv((juce::String("HOST_") + v).toRawUTF8())) setenv(v, x, 1);
     juce::String err;
     auto inst = fm.createPluginInstance(*types[0], sr, block, err);
     if (!inst) std::fprintf(stderr, "cannot instantiate: %s\n", err.toRawUTF8());
@@ -108,9 +111,22 @@ int main(int argc, char** argv) {
         return pk > 1e-4 ? 0 : 1;
     }
     // map host parameters by name (JUCE exposes the plugin's parameter names unchanged)
+    // Map registry parameters to host parameters by order (JUCE exposes them in the plugin's order),
+    // confirming each by name; this stays exact even when two parameters share a display name.
     std::map<juce::String, juce::AudioProcessorParameter*> byName;
-    for (auto* p : plugin->getParameters()) byName[p->getName(256)] = p;
     auto& R = Registry::get();
+    {
+        auto hosted = plugin->getParameters();
+        int j = 0;
+        for (int i : R.forPlugin(plugin->getName().contains("FX") ? kFx : kSynth)) {
+            const auto nm = juce::String::fromUTF8(R[i].name.c_str());
+            int k = j;
+            while (k < hosted.size() && hosted[k]->getName(256) != nm) ++k;
+            if (k < hosted.size()) { byName[juce::String(R[i].id)] = hosted[k]; j = k + 1; }
+            else if (j < hosted.size() && R[i].id.find("wt_warp") != std::string::npos) byName[juce::String(R[i].id)] = hosted[j++]; // renamed in 1.0.2 ("Warp" -> "WT Warp")
+        }
+    }
+    auto hostParam = [&](int i) -> juce::AudioProcessorParameter* { auto it = byName.find(juce::String(R[i].id)); return it == byName.end() ? nullptr : it->second; };
 
     if (cmd == "recall" && argc >= 5) {
         juce::MemoryBlock raw; juce::File(argv[3]).loadFileAsData(raw);
@@ -125,10 +141,10 @@ int main(int argc, char** argv) {
             for (auto& prop : o->getProperties()) {
                 int i = R.indexOf(prop.name.toString().toStdString());
                 if (i < 0) continue;
-                auto it = byName.find(juce::String::fromUTF8(R[i].name.c_str()));
-                if (it == byName.end()) continue;
+                auto* hpp = hostParam(i);
+                if (!hpp) continue;
                 float expectNorm = R[i].toNorm((float) (double) prop.value);
-                float got = it->second->getValue();
+                float got = hpp->getValue();
                 ++checked;
                 if (std::fabs(got - expectNorm) > (R[i].isDiscrete() ? 0.5f / std::max(1.f, R[i].max - R[i].min) : 2e-4f)) { if (bad++ < 5) std::printf("  mismatch %s: %f vs %f\n", R[i].id.c_str(), got, expectNorm); }
             }
@@ -144,9 +160,8 @@ int main(int argc, char** argv) {
         for (int i : R.forPlugin(fx ? kFx : kSynth)) {
             const auto& d = R[i];
             if (only && d.id.find(only) == std::string::npos) continue;
-            auto it = byName.find(juce::String::fromUTF8(d.name.c_str()));
-            if (it == byName.end()) { md += "| `" + d.id + "` | FAIL | not exposed to the host |\n"; ++fail; continue; }
-            auto* hp = it->second;
+            auto* hp = hostParam(i);
+            if (!hp) { md += "| `" + d.id + "` | FAIL | not exposed to the host |\n"; ++fail; continue; }
             // context (same as the Check 1 audit): parameter values, test routes and module placement
             Patch p(false); // synth defaults as the baseline (filter 1 on), like the Check 1 audit
             if (fx) { p.set("f1_type", FT_LP24); p.set("f1_cutoff", 6000); }

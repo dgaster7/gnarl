@@ -12,9 +12,9 @@ VST3="$HOME/Library/Audio/Plug-Ins/VST3"
 RES="$(mktemp)"
 case "${1:-status}" in
   update)
-    GNARL_UPDATER_SELFTEST="$RES" "$HOST" info "$VST3/GNARL.vst3"; echo "--- updater (inside the plugin):"; cat "$RES" ;;
+    HOST_GNARL_UPDATER_SELFTEST="$RES" "$HOST" info "$VST3/GNARL.vst3"; echo "--- updater (inside the plugin):"; cat "$RES" ;;
   rollback)
-    GNARL_UPDATE_MANIFEST_URL="https://invalid.invalid/manifest.json" GNARL_UPDATER_SELFTEST="$RES" GNARL_UPDATER_SELFTEST_ROLLBACK=1 "$HOST" info "$VST3/GNARL.vst3"
+    HOST_GNARL_UPDATE_MANIFEST_URL="https://invalid.invalid/manifest.json" HOST_GNARL_UPDATER_SELFTEST="$RES" HOST_GNARL_UPDATER_SELFTEST_ROLLBACK=1 "$HOST" info "$VST3/GNARL.vst3"
     echo "--- updater (inside the plugin):"; cat "$RES" ;;
 esac
 echo "--- fresh host process (what a DAW sees after restarting):"
