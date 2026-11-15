@@ -67,7 +67,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `osca_wt_table` | Osc A Table | 0 … 63 | 0 |  | 1 | — | Integer | synth | Factory wavetable index (user tables override via the browser). |
 | `osca_wt_pos` | Osc A WT Position | 0 … 1 | 0 | % | 1 | 20 ms | Continuous | synth | Frame position, smoothly interpolated. |
 | `osca_wt_warp_mode` | Osc A Warp Mode | None / Bend + / Bend - / Sync / PWM Squeeze / Mirror / Phase Dist / Fold / Quantize | None |  | 1 | — | Choice | synth | Phase/shape warp applied to the frame. |
-| `osca_wt_warp` | Osc A Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
+| `osca_wt_warp` | Osc A WT Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
 | `osca_wt_pwm_detune` | Osc A PWM Auto Detune | 0 … 1 | 0 |  | 1 | — | Toggle | synth | PWM Squeeze keeps perceived pitch by detuning the fundamental. |
 | `osca_fm_alg` | Osc A FM Algorithm | 0 … 7 | 0 |  | 1 | — | Integer | synth | Operator routing algorithm (8). |
 | `osca_fm_op1_ratio` | Osc A Op1 Ratio | 0.125 … 32 | 1 | ratio | 0.245 | 20 ms | Continuous | synth | Frequency ratio to the note. |
@@ -137,7 +137,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `osca_sh_twist` | Osc A Twist | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Wrap and invert past a threshold. |
 | `osca_sh_drive` | Osc A Drive | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Boost and clip. |
 | `osca_sh_window` | Osc A Window | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Triangular window over the cycle. |
-| `osca_sh_offset` | Osc A Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (phase offset). |
+| `osca_sh_offset` | Osc A Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (0..180 degrees phase offset). |
 | `osca_sh_wave` | Osc A Wave | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Morph toward a sine. |
 | `osca_sh_bits` | Osc A Bits | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Bit reduction from 32 bits down to 1 bit. |
 | `osca_sh_shrink` | Osc A Shrink | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Compress the cycle and zero-fill. |
@@ -182,7 +182,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `oscb_wt_table` | Osc B Table | 0 … 63 | 0 |  | 1 | — | Integer | synth | Factory wavetable index (user tables override via the browser). |
 | `oscb_wt_pos` | Osc B WT Position | 0 … 1 | 0 | % | 1 | 20 ms | Continuous | synth | Frame position, smoothly interpolated. |
 | `oscb_wt_warp_mode` | Osc B Warp Mode | None / Bend + / Bend - / Sync / PWM Squeeze / Mirror / Phase Dist / Fold / Quantize | None |  | 1 | — | Choice | synth | Phase/shape warp applied to the frame. |
-| `oscb_wt_warp` | Osc B Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
+| `oscb_wt_warp` | Osc B WT Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
 | `oscb_wt_pwm_detune` | Osc B PWM Auto Detune | 0 … 1 | 0 |  | 1 | — | Toggle | synth | PWM Squeeze keeps perceived pitch by detuning the fundamental. |
 | `oscb_fm_alg` | Osc B FM Algorithm | 0 … 7 | 0 |  | 1 | — | Integer | synth | Operator routing algorithm (8). |
 | `oscb_fm_op1_ratio` | Osc B Op1 Ratio | 0.125 … 32 | 1 | ratio | 0.245 | 20 ms | Continuous | synth | Frequency ratio to the note. |
@@ -252,7 +252,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `oscb_sh_twist` | Osc B Twist | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Wrap and invert past a threshold. |
 | `oscb_sh_drive` | Osc B Drive | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Boost and clip. |
 | `oscb_sh_window` | Osc B Window | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Triangular window over the cycle. |
-| `oscb_sh_offset` | Osc B Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (phase offset). |
+| `oscb_sh_offset` | Osc B Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (0..180 degrees phase offset). |
 | `oscb_sh_wave` | Osc B Wave | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Morph toward a sine. |
 | `oscb_sh_bits` | Osc B Bits | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Bit reduction from 32 bits down to 1 bit. |
 | `oscb_sh_shrink` | Osc B Shrink | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Compress the cycle and zero-fill. |
@@ -297,7 +297,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `oscc_wt_table` | Osc C Table | 0 … 63 | 0 |  | 1 | — | Integer | synth | Factory wavetable index (user tables override via the browser). |
 | `oscc_wt_pos` | Osc C WT Position | 0 … 1 | 0 | % | 1 | 20 ms | Continuous | synth | Frame position, smoothly interpolated. |
 | `oscc_wt_warp_mode` | Osc C Warp Mode | None / Bend + / Bend - / Sync / PWM Squeeze / Mirror / Phase Dist / Fold / Quantize | None |  | 1 | — | Choice | synth | Phase/shape warp applied to the frame. |
-| `oscc_wt_warp` | Osc C Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
+| `oscc_wt_warp` | Osc C WT Warp | 0 … 1 | 0 | % | 1 | 20 ms | Amount | synth | Warp amount; 0 = none. |
 | `oscc_wt_pwm_detune` | Osc C PWM Auto Detune | 0 … 1 | 0 |  | 1 | — | Toggle | synth | PWM Squeeze keeps perceived pitch by detuning the fundamental. |
 | `oscc_fm_alg` | Osc C FM Algorithm | 0 … 7 | 0 |  | 1 | — | Integer | synth | Operator routing algorithm (8). |
 | `oscc_fm_op1_ratio` | Osc C Op1 Ratio | 0.125 … 32 | 1 | ratio | 0.245 | 20 ms | Continuous | synth | Frequency ratio to the note. |
@@ -367,7 +367,7 @@ Skew is JUCE `NormalisableRange` skew (normalised = proportion^skew). Smoothing 
 | `oscc_sh_twist` | Osc C Twist | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Wrap and invert past a threshold. |
 | `oscc_sh_drive` | Osc C Drive | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Boost and clip. |
 | `oscc_sh_window` | Osc C Window | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Triangular window over the cycle. |
-| `oscc_sh_offset` | Osc C Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (phase offset). |
+| `oscc_sh_offset` | Osc C Offset | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Rotate the cycle (0..180 degrees phase offset). |
 | `oscc_sh_wave` | Osc C Wave | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Morph toward a sine. |
 | `oscc_sh_bits` | Osc C Bits | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Bit reduction from 32 bits down to 1 bit. |
 | `oscc_sh_shrink` | Osc C Shrink | 0 … 1 | 0 | % | 1 | 10 ms | Amount | synth | Compress the cycle and zero-fill. |

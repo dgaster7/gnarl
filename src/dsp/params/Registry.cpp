@@ -195,7 +195,7 @@ void buildOsc(std::vector<ParamDef>& v, int k) {
     C(doc(b.integer(o + "wt_table", N + "Table", 0, 63, 0), "Factory wavetable index (user tables override via the browser)."), {{o + "engine", OE_Wavetable}, {o + "wt_pos", 0.5f}});
     C(doc(b.cont(o + "wt_pos", N + "WT Position", 0, 1, 0, Unit::Percent), "Frame position, smoothly interpolated."), {{o + "engine", OE_Wavetable}, {o + "wt_table", 1}});
     C(doc(b.choice(o + "wt_warp_mode", N + "Warp Mode", choices::warpModes(), 0), "Phase/shape warp applied to the frame."), {{o + "engine", OE_Wavetable}, {o + "wt_warp", 0.6f}});
-    C(doc(b.cont(o + "wt_warp", N + "Warp", 0, 1, 0, Unit::Percent, Role::Amount), "Warp amount; 0 = none."), {{o + "engine", OE_Wavetable}, {o + "wt_warp_mode", WM_BendPlus}});
+    C(doc(b.cont(o + "wt_warp", N + "WT Warp", 0, 1, 0, Unit::Percent, Role::Amount), "Warp amount; 0 = none."), {{o + "engine", OE_Wavetable}, {o + "wt_warp_mode", WM_BendPlus}});
     C(doc(b.toggle(o + "wt_pwm_detune", N + "PWM Auto Detune", false), "PWM Squeeze keeps perceived pitch by detuning the fundamental."), {{o + "engine", OE_Wavetable}, {o + "wt_warp_mode", WM_PWM}, {o + "wt_warp", 0.7f}});
     // FM
     std::vector<ContextValue> fm = {{o + "engine", OE_FM}};

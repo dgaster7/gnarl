@@ -18,3 +18,8 @@ TEST_CASE("registry: ids unique, defaults in range, contexts refer to real param
         REQUIRE(std::abs(p.fromNorm(p.toNorm(p.def)) - p.def) <= 1e-3f * (p.max - p.min));
     }
 }
+
+TEST_CASE("registry: every parameter name is unique (hosts show names in automation lists)", "[registry]") {
+    std::set<std::string> names;
+    for (auto& p : Registry::get().all()) { INFO(p.id << " " << p.name); REQUIRE(names.insert(p.name).second); }
+}
