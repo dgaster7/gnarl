@@ -1,4 +1,5 @@
 #include "PatchStructure.h"
+#include "params/Registry.h"
 #include <algorithm>
 #include <cmath>
 #include <cstring>
@@ -69,6 +70,24 @@ PatchStructure::PatchStructure() {
 }
 
 void PatchStructure::finalize() {
+    {
+        auto& R = Registry::get();
+        globalRoutes.clear(); voiceRoutes.clear(); globalDests.clear(); voiceDests.clear();
+        voiceRouted.assign((size_t) R.size(), 0);
+        std::vector<uint8_t> gseen((size_t) R.size(), 0);
+        for (int k = 0; k < kNumRoutes; ++k) {
+            const auto& r = routes[(size_t) k];
+            if (!r.active() || r.dest >= R.size() || !R[r.dest].modulatable || R[r.dest].isDiscrete()) continue;
+            CompiledRoute c{k, r.source, r.via, r.curve, r.bipolar, r.dest};
+            if (R[r.dest].scope == Scope::Voice) {
+                voiceRoutes.push_back(c);
+                if (!voiceRouted[(size_t) r.dest]) { voiceRouted[(size_t) r.dest] = 1; voiceDests.push_back(r.dest); }
+            } else {
+                globalRoutes.push_back(c);
+                if (!gseen[(size_t) r.dest]) { gseen[(size_t) r.dest] = 1; globalDests.push_back(r.dest); }
+            }
+        }
+    }
     for (size_t k = 0; k < 6; ++k)
         for (int i = 0; i <= kTableSize; ++i) {
             float x = (float) i / kTableSize;

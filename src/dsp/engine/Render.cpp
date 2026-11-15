@@ -8,10 +8,10 @@
 
 namespace gnarl {
 
-Patch::Patch() : structure(std::make_shared<PatchStructure>()) {
+Patch::Patch(bool fxPlugin) : structure(std::make_shared<PatchStructure>()) {
     auto& R = Registry::get();
     values.resize((size_t) R.size());
-    for (int i = 0; i < R.size(); ++i) values[(size_t) i] = R[i].def;
+    for (int i = 0; i < R.size(); ++i) values[(size_t) i] = R[i].defaultFor(fxPlugin);
 }
 
 void Patch::set(const std::string& id, float v) {
@@ -26,7 +26,8 @@ float Patch::get(const std::string& id) const {
     return i < 0 ? 0.f : values[(size_t) i];
 }
 
-int Patch::addRoute(int source, const std::string& destId, float depth, int curve, int via, bool bipolar) {
+int Patch::addRoute(int source, const std::string& destId, float depth, int curve, int via, int polarity) {
+    const bool bipolar = polarity < 0 ? modSourceIsBipolar(source) : polarity > 0;
     int dest = Registry::get().indexOf(destId);
     for (int k = 0; k < kNumRoutes; ++k) {
         auto& r = structure->routes[(size_t) k];

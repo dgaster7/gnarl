@@ -31,14 +31,14 @@ juce::AudioProcessorValueTreeState::ParameterLayout GnarlProcessor::makeLayout()
         juce::ParameterID pid{p.id, 1};
         if (p.role == Role::Choice) {
             juce::StringArray c; for (auto& s : p.choices) c.add(s);
-            layout.add(std::make_unique<juce::AudioParameterChoice>(pid, p.name, c, (int) p.def));
+            layout.add(std::make_unique<juce::AudioParameterChoice>(pid, p.name, c, (int) p.defaultFor(fx)));
         } else if (p.role == Role::Toggle) {
-            layout.add(std::make_unique<juce::AudioParameterBool>(pid, p.name, p.def > 0.5f));
+            layout.add(std::make_unique<juce::AudioParameterBool>(pid, p.name, p.defaultFor(fx) > 0.5f));
         } else if (p.role == Role::Integer) {
-            layout.add(std::make_unique<juce::AudioParameterInt>(pid, p.name, (int) p.min, (int) p.max, (int) p.def));
+            layout.add(std::make_unique<juce::AudioParameterInt>(pid, p.name, (int) p.min, (int) p.max, (int) p.defaultFor(fx)));
         } else {
             juce::NormalisableRange<float> r(p.min, p.max, p.interval, p.skew);
-            layout.add(std::make_unique<juce::AudioParameterFloat>(pid, p.name, r, p.def));
+            layout.add(std::make_unique<juce::AudioParameterFloat>(pid, p.name, r, p.defaultFor(fx)));
         }
     }
     return layout;

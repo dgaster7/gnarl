@@ -54,6 +54,8 @@ struct ParamDef {
     std::vector<ContextValue> context;  // values that make the parameter active for testing
     std::vector<ContextRoute> contextRoutes;
     float neutral = 0;                  // for Neutral / bipolar Depth: the "no effect" value
+    float fxDef = NAN;                  // GNARL FX default when it differs from the synth default
+    float defaultFor(bool fx) const { return (fx && !std::isnan(fxDef)) ? fxDef : def; }
     float zeroValue() const { return (role == Role::Depth || role == Role::Neutral) ? neutral : min; }
 
     bool isDiscrete() const { return interval > 0 || role == Role::Choice || role == Role::Toggle || role == Role::Integer; }

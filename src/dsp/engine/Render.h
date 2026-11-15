@@ -14,10 +14,10 @@ struct Patch {
     std::shared_ptr<PatchStructure> structure;
     std::string name, category, author;
     std::vector<std::string> tags;
-    Patch();                                      // registry defaults + default structure
+    explicit Patch(bool fxPlugin = false);        // registry defaults (per plugin) + default structure
     void set(const std::string& id, float v);
     float get(const std::string& id) const;
-    int addRoute(int source, const std::string& destId, float depth, int curve = 0, int via = -1, bool bipolar = true); // returns route index
+    int addRoute(int source, const std::string& destId, float depth, int curve = 0, int via = -1, int polarity = -1); // polarity -1 = natural; returns route index
 };
 
 enum class TestInput { None, Saw110, Sine220, Noise, Chord, Drums, Sweep };

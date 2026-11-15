@@ -322,6 +322,7 @@ void buildFilter(std::vector<ParamDef>& v, int k) {
         return ctx(p, all);
     };
     C(doc(b.choice(f + "type", N + "Type", choices::filterTypes(), k == 0 ? FT_LP24 : FT_Off), "Filter model."), -1, {{f + "cutoff", 800}, {f + "reso", 0.5f}});
+    b.out.back().fxDef = FT_Off; // GNARL FX starts transparent
     if (k == 1) b.out.back().def = FT_Off;
     C(doc(b.freq(f + "cutoff", N + "Cutoff", 20, 20000, k == 0 ? 6000.f : 1000.f, 1000), "Cutoff / centre frequency."), FT_LP24, {{f + "reso", 0.3f}});
     C(doc(b.cont(f + "reso", N + "Resonance", 0, 1, 0.1f, Unit::Percent), "Resonance / emphasis."), FT_LP24, {{f + "cutoff", 1000}});

@@ -55,6 +55,7 @@ Case makeCase(int idx) {
         c.spec.fx = true; c.spec.sidechain = TestInput::Drums;
     }
     if (p.id == "fxp_env_trigger") { c.spec.fx = true; c.spec.input = TestInput::Drums; c.spec.notes = {{0.4, 0.6, 48, 100, 64}}; }
+    c.patch = Patch(c.spec.fx);
     for (auto& v : p.context) c.patch.set(v.id, v.value);
     for (auto& r : p.contextRoutes) {
         if (r.source.rfind("#route", 0) == 0) {

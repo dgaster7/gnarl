@@ -93,6 +93,12 @@ public:
     std::array<std::array<float, kTableSize + 1>, 4> envTable{};
     std::array<std::array<float, kTableSize + 1>, 2> drawTable{};
     std::array<int, 4> envSustainSample{}; // index into envTable, -1 none
+
+    // Compiled routing (built by finalize()): routes split by destination scope.
+    struct CompiledRoute { int k; int src; int via; int curve; bool bipolar; int dest; };
+    std::vector<CompiledRoute> globalRoutes, voiceRoutes;
+    std::vector<int> globalDests, voiceDests;
+    std::vector<uint8_t> voiceRouted; // per registry index
     void finalize();
 
     int slotOf(int module) const;
