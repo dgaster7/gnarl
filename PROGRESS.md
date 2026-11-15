@@ -30,3 +30,4 @@ Resume rule: read this file and CLAUDE.md, continue from the first unchecked ite
 - Fixtures: tests/fixtures/1.0.0 (3 synth + 3 FX states with expected values).
 - Check 2 host-level effect test (gnarl_host) passes: GNARL 854/854, GNARL FX 528/528 through built VST3s. Step sequencers now run on their own clock when the transport is stopped (bug found by the host test).
 - CPU: median 4.4% of one core per preset (48k/256, 4x OS), max 6.5%.
+- pluginval found a real crash: background-thread state restore swapped the patch structure under the UI. Fixed with a locked swap + message-thread retirement; undo housekeeping deferred to the message thread. Universal Release: pluginval 10 x4, auval x2, host effect test all PASS.

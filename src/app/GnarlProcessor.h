@@ -41,7 +41,8 @@ public:
     Engine& getEngine() { return engine; }
 
     // ---- patch structure (message thread) ----
-    const PatchStructure& structure() const { return *structureCopy; }
+    // Safe from any thread: the returned object stays alive until the message thread retires it.
+    const PatchStructure& structure() const { const juce::ScopedLock l(structureLock); return *structureCopy; }
     // Edit the structure as one undoable step; publishes to the audio engine.
     void editStructure(const juce::String& name, const std::function<void(PatchStructure&)>& fn, bool undoable = true);
     void setStructureDirect(const PatchStructure& s); // used by undo
@@ -93,6 +94,9 @@ private:
     std::vector<MidiEvent> midiScratch;
     std::atomic<int> lastLatency{0};
     std::shared_ptr<PatchStructure> structureCopy;
+    juce::CriticalSection structureLock;
+    std::vector<std::shared_ptr<PatchStructure>> retiredStructures; // freed on the message thread only
+    std::atomic<bool> clearUndoPending{false};
     juce::String currentName{"Init"};
     std::array<juce::String, 2> abState; int abSlot = 0;
     std::unique_ptr<PresetManager> presetManager;

@@ -28,7 +28,9 @@ fi
 for p in "${VST3S[@]}" "${AUS[@]}"; do
   name="$(basename "$p")"
   echo "== pluginval --strictness-level $STRICT $name"
-  if "$PV" --strictness-level "$STRICT" --validate-in-process --timeout-ms 600000 --output-dir "$ROOT/build/validation" --validate "$p" > "$ROOT/build/validation/$name.log" 2>&1; then
+  # PLUGINVAL_SKIP_GUI=1 skips the tests that open editor windows (use it when running on someone's desktop)
+  GUI_FLAG=""; [ "${PLUGINVAL_SKIP_GUI:-0}" = "1" ] && GUI_FLAG="--skip-gui-tests"
+  if "$PV" --strictness-level "$STRICT" $GUI_FLAG --validate-in-process --timeout-ms 600000 --output-dir "$ROOT/build/validation" --validate "$p" > "$ROOT/build/validation/$name.log" 2>&1; then
     echo "   PASS"
   else
     echo "   FAIL (see build/validation/$name.log)"; tail -30 "$ROOT/build/validation/$name.log"; FAIL=1
@@ -44,7 +46,7 @@ for spec in "aumu Gsyn Gnrl" "aumf Gfxp Gnrl"; do
 done
 # host-level effect test through the built VST3 binaries (parameter -> DSP wiring)
 if [ "${1:-}" != "--installed" ]; then
-  HOST="$(dirname "$A")/tools/gnarl_host_artefacts/$CFG/gnarl_host"
+  HOST="$(dirname "$(dirname "$A")")/tools/gnarl_host_artefacts/$CFG/gnarl_host"
   for v in "${VST3S[@]}"; do
     name="$(basename "$v" .vst3)"
     echo "== host effect test $name"

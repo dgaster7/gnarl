@@ -43,6 +43,7 @@ GnarlProcessor::GnarlProcessor(bool fxPlugin)
     }
     midiScratch.reserve(4096);
     structureCopy = std::make_shared<PatchStructure>();
+    structureCopy->finalize();
     publishStructure();
     presetManager = std::make_unique<PresetManager>(*this);
     updaterPtr = std::make_unique<Updater>();
@@ -155,14 +156,20 @@ void GnarlProcessor::processBlock(juce::AudioBuffer<float>& buffer, juce::MidiBu
     if (lat != lastLatency.load()) { lastLatency = lat; triggerAsyncUpdate(); }
 }
 
-void GnarlProcessor::handleAsyncUpdate() { setLatencySamples(lastLatency.load()); }
+void GnarlProcessor::handleAsyncUpdate() {
+    setLatencySamples(lastLatency.load());
+    if (clearUndoPending.exchange(false)) undoManager.clearUndoHistory();
+    // free structures replaced since the last message-thread pass (no UI code can still be reading them now)
+    std::vector<std::shared_ptr<PatchStructure>> dead;
+    { const juce::ScopedLock l(structureLock); dead.swap(retiredStructures); }
+}
 
 // ---------------- state ----------------
 Patch GnarlProcessor::currentPatch() const {
     Patch p(fx);
     auto& R = Registry::get();
     for (auto& [idx, ptr] : paramLinks) p.values[(size_t) idx] = ptr->load();
-    *p.structure = *structureCopy;
+    { const juce::ScopedLock l(structureLock); *p.structure = *structureCopy; }
     p.name = currentName.toStdString();
     (void) R;
     return p;
@@ -214,28 +221,39 @@ void GnarlProcessor::loadPatch(const Patch& p, bool undoable) {
     PatchStructure s = *p.structure;
     resolveUserTables(s);
     s.finalize();
-    if (undoable) undoManager.perform(new StructureAction(*this, *structureCopy, s));
+    if (undoable) undoManager.perform(new StructureAction(*this, structure(), s));
     else setStructureDirect(s);
     if (!p.name.empty()) currentName = juce::String::fromUTF8(p.name.c_str());
-    if (!undoable) undoManager.clearUndoHistory();
+    if (!undoable) {
+        if (juce::MessageManager::existsAndIsCurrentThread()) undoManager.clearUndoHistory();
+        else { clearUndoPending = true; triggerAsyncUpdate(); } // the UndoManager is message-thread only
+    }
 }
 
 void GnarlProcessor::publishStructure() {
-    structureCopy->finalize();
-    engine.setStructure(std::make_shared<PatchStructure>(*structureCopy));
+    std::shared_ptr<PatchStructure> cur;
+    { const juce::ScopedLock l(structureLock); cur = structureCopy; }
+    engine.setStructure(std::make_shared<PatchStructure>(*cur));
 }
 
 void GnarlProcessor::setStructureDirect(const PatchStructure& s) {
-    structureCopy = std::make_shared<PatchStructure>(s);
+    auto next = std::make_shared<PatchStructure>(s);
+    next->finalize();
+    {
+        const juce::ScopedLock l(structureLock);
+        if (structureCopy) retiredStructures.push_back(structureCopy);
+        structureCopy = next;
+    }
     publishStructure();
     structureChanged.sendChangeMessage();
+    triggerAsyncUpdate();
 }
 
 void GnarlProcessor::editStructure(const juce::String& name, const std::function<void(PatchStructure&)>& fn, bool undoable) {
-    PatchStructure after = *structureCopy;
+    PatchStructure after = structure();
     fn(after);
     after.finalize();
-    if (undoable) { undoManager.beginNewTransaction(name); undoManager.perform(new StructureAction(*this, *structureCopy, after)); }
+    if (undoable) { undoManager.beginNewTransaction(name); undoManager.perform(new StructureAction(*this, structure(), after)); }
     else setStructureDirect(after);
 }
 
@@ -258,17 +276,17 @@ juce::RangedAudioParameter* GnarlProcessor::paramByIndex(int i) const { return (
 int GnarlProcessor::addRoute(int source, int dest, float depth) {
     int slot = -1;
     for (int k = 0; k < kNumRoutes; ++k) {
-        const auto& r = structureCopy->routes[(size_t) k];
+        const auto& r = structure().routes[(size_t) k];
         if (r.source == source && r.dest == dest) return k; // already routed
         if (slot < 0 && r.source == MS_None && r.dest < 0) slot = k;
     }
     if (slot < 0) return -1;
     undoManager.beginNewTransaction("Add modulation");
-    PatchStructure after = *structureCopy;
+    PatchStructure after = structure();
     auto& r = after.routes[(size_t) slot];
     r.source = source; r.dest = dest; r.via = MS_None; r.curve = RC_Linear; r.bypass = false; r.bipolar = modSourceIsBipolar(source);
     after.finalize();
-    undoManager.perform(new StructureAction(*this, *structureCopy, after));
+    undoManager.perform(new StructureAction(*this, structure(), after));
     setRouteDepth(slot, depth);
     return slot;
 }
@@ -280,7 +298,8 @@ void GnarlProcessor::removeRoute(int k) {
 
 std::vector<int> GnarlProcessor::routesForParam(int p) const {
     std::vector<int> v;
-    for (int k = 0; k < kNumRoutes; ++k) if (structureCopy->routes[(size_t) k].dest == p && structureCopy->routes[(size_t) k].source != MS_None) v.push_back(k);
+    const auto& st = structure();
+    for (int k = 0; k < kNumRoutes; ++k) if (st.routes[(size_t) k].dest == p && st.routes[(size_t) k].source != MS_None) v.push_back(k);
     return v;
 }
 

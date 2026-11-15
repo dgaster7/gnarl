@@ -30,7 +30,7 @@ ctest --test-dir build --output-on-failure          # everything
 ./build/tests/gnarl_tests "[audit]"                 # Check 1 parameter audit -> build/parameter_audit.md
 ./build/tests/gnarl_tests "[presets]"               # preset gates -> build/preset_report.md
 ./build/tests/gnarl_app_tests                       # UI binding audit, state round trips, fixtures
-scripts/validate.sh build                           # pluginval strictness 10 + auval + host-level effect test
+PLUGINVAL_SKIP_GUI=1 scripts/validate.sh build/src/plugins Release   # locally: skip editor-window tests (they pop up on the desktop); CI runs them
 ```
 
 ## Realtime-safety rules (audio thread)

@@ -73,4 +73,4 @@ All 200 factory presets (160 GNARL, 40 GNARL FX) were **designed by measurement,
 
 Build: see `CLAUDE.md`. Releasing: `docs/RELEASING.md`. Manual QA checklist: `docs/MANUAL_QA.md`. Architecture: `docs/ARCHITECTURE.md`. Every parameter: `docs/PARAMETERS.md`.
 
-GNARL uses the JUCE framework under the AGPLv3 (this repository is public and open source); see `docs/FINAL_REPORT.md` for the licence notes.
+GNARL is built with the JUCE framework, used under JUCE's free **Starter** licence (allowed while annual revenue or funding is under $20,000; above that an Indie or Pro licence is needed). See `docs/FINAL_REPORT.md`.

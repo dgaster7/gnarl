@@ -4,3 +4,5 @@ build*/
 /signing-key*
 .cache/
 content/Wavetables/
+build-release*.log
+dist/
