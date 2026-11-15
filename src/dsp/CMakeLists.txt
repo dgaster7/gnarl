@@ -1,0 +1,5 @@
+file(GLOB_RECURSE GNARL_DSP_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+add_library(gnarl_dsp STATIC ${GNARL_DSP_SOURCES})
+target_include_directories(gnarl_dsp PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_compile_options(gnarl_dsp PRIVATE -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare -ffp-contract=fast)
+target_link_libraries(gnarl_dsp PUBLIC "-framework Accelerate")
