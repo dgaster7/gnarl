@@ -2,7 +2,7 @@
 
 Resume rule: read this file and CLAUDE.md, continue from the first unchecked item. Commit + push after each item.
 
-- [ ] 1. Tools checked; PROGRESS.md, CLAUDE.md, docs/ARCHITECTURE.md, docs/PARAMETERS.md; GitHub repo created and pushed
+- [x] 1. Tools checked; PROGRESS.md, CLAUDE.md, docs/ARCHITECTURE.md, docs/PARAMETERS.md; GitHub repo created and pushed
 - [ ] 2. Scaffold: CMake, JUCE, plugin targets, Catch2, render harness, pluginval + auval wired, CI green on empty plugins
 - [ ] 3. Parameter registry + Check 1 harness (before real DSP)
 - [ ] 4. Core voice: VA + wavetable engines, SUB, NOISE, SVF, amp envelope, glide

@@ -1,0 +1,45 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  build-test:
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: brew list ninja >/dev/null 2>&1 || brew install ninja
+      - name: Cache dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/_deps
+          key: deps-${{ hashFiles('CMakeLists.txt') }}
+      - name: Configure (universal)
+        run: cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64"
+      - name: Build
+        run: cmake --build build
+      - name: Check universal binaries
+        run: |
+          lipo -archs "build/src/plugins/GNARL_artefacts/Release/VST3/GNARL.vst3/Contents/MacOS/GNARL" | grep -q "x86_64 arm64"
+          lipo -archs "build/src/plugins/GNARL_FX_artefacts/Release/AU/GNARL FX.component/Contents/MacOS/GNARL FX" | grep -q "x86_64 arm64"
+      - name: Unit tests + Check 1 + Check 3
+        run: ctest --test-dir build --output-on-failure
+      - name: Check 2 (pluginval strictness 10, auval, host effect test)
+        run: scripts/validate.sh build/src/plugins Release
+      - name: Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            build/parameter_audit.md
+            build/preset_report.md
+            build/validation/
+          if-no-files-found: ignore

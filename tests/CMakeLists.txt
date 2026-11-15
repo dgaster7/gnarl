@@ -1,0 +1,6 @@
+file(GLOB GNARL_TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/dsp/*.cpp)
+add_executable(gnarl_tests ${GNARL_TEST_SOURCES})
+target_link_libraries(gnarl_tests PRIVATE gnarl_dsp Catch2::Catch2WithMain)
+target_compile_definitions(gnarl_tests PRIVATE GNARL_SOURCE_DIR="${CMAKE_SOURCE_DIR}" GNARL_BUILD_DIR="${CMAKE_BINARY_DIR}")
+include(${catch2_SOURCE_DIR}/extras/Catch.cmake)
+add_test(NAME gnarl_tests COMMAND gnarl_tests)
